@@ -78,6 +78,7 @@ struct PopoverView: View {
     @State private var filter: Filter = .active
     @State private var listHeight: CGFloat = 0
     @State private var spin = 0.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openSettings) private var openSettings
     /// In the Dock window the view stretches to whatever size the user drags the window to;
     /// in the menu bar popover it keeps its compact, content-sized shape.
@@ -91,11 +92,20 @@ struct PopoverView: View {
     private var nowSessions: [CopilotSession] { store.sessions.filter { $0.isActive || $0.status == .idle } }
     private var shown: [CopilotSession] { filter == .active ? nowSessions : store.sessions }
 
-    private var sections: [(status: SessionStatus, items: [CopilotSession])] {
-        [SessionStatus.needsInput, .working, .idle, .stopped].compactMap { s in
-            let items = shown.filter { $0.status == s }
-            return items.isEmpty ? nil : (s, items)
+    struct ListSection: Identifiable {
+        let id: String, title: String, tint: Color, items: [CopilotSession]
+    }
+
+    /// Pinned sessions get their own group at the top; the rest are grouped by status.
+    private var sections: [ListSection] {
+        var out: [ListSection] = []
+        let pinned = shown.filter(\.pinned)
+        if !pinned.isEmpty { out.append(.init(id: "pinned", title: "Pinned", tint: Palette.accent, items: pinned)) }
+        for s in [SessionStatus.needsInput, .working, .idle, .stopped] {
+            let items = shown.filter { $0.status == s && !$0.pinned }
+            if !items.isEmpty { out.append(.init(id: s.rawValue, title: s.sectionTitle, tint: s.tint, items: items)) }
         }
+        return out
     }
 
     private var overallTint: Color {
@@ -113,7 +123,8 @@ struct PopoverView: View {
         }
         .modifier(SizingModifier(resizable: resizable))
         .background(backdrop)
-        .animation(.snappy(duration: 0.28), value: filter)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: filter)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: store.sessions.map { "\($0.id)\($0.status.rawValue)\($0.pinned)" })
         .onAppear { store.doneAt = nil }
     }
 
@@ -163,10 +174,10 @@ struct PopoverView: View {
     private var list: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 18) {
-                ForEach(sections, id: \.status) { section in
+                ForEach(sections) { section in
                     VStack(alignment: .leading, spacing: 8) {
-                        SectionHeader(status: section.status, count: section.items.count)
-                        ForEach(section.items) { SessionCard(session: $0) }
+                        SectionHeader(title: section.title, tint: section.tint, count: section.items.count, symbol: section.id == "pinned" ? "pin.fill" : nil)
+                        ForEach(section.items) { SessionCard(session: $0).transition(.opacity.combined(with: .scale(scale: 0.97))) }
                     }
                 }
             }
@@ -214,11 +225,18 @@ struct PopoverView: View {
                 Button { filter = .recent } label: { Text("See earlier work") }
                     .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: false))
                     .padding(.top, 6)
+            } else if store.sessions.isEmpty {
+                Button { SessionActions.openCopilot() } label: {
+                    HStack(spacing: 5) { Text("Open GitHub app"); Image(systemName: "arrow.up.right").font(.system(size: 8.5, weight: .bold)) }
+                }
+                .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: true))
+                .padding(.top, 6)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: resizable ? .infinity : nil)
         .padding(.top, 26)
         .padding(.bottom, 34)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Footer
@@ -267,6 +285,12 @@ struct SessionCard: View {
     let session: CopilotSession
     @State private var expanded: Bool
     @State private var hovering = false
+    @State private var renaming = false
+    @State private var draft = ""
+    @FocusState private var renameFocus: Bool
+    @ObservedObject private var inspectorCache = InspectorCache.shared
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(session: CopilotSession, expanded: Bool = false) {
         self.session = session
@@ -279,12 +303,30 @@ struct SessionCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(session.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(session.isActive ? .primary : .secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let c = session.tag.color {
+                    Circle().fill(c).frame(width: 8, height: 8).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+                        .accessibilityLabel("\(session.tag.label) tag")
+                }
+                if renaming {
+                    TextField("Session name", text: $draft)
+                        .textFieldStyle(.plain).font(.system(size: 13, weight: .semibold))
+                        .focused($renameFocus)
+                        .onSubmit { commitRename() }
+                        .onExitCommand { renaming = false }
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Palette.well))
+                } else {
+                    Text(session.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(session.isActive ? .primary : .secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .onTapGesture(count: 2) { startRename() }
+                }
                 Spacer(minLength: 4)
+                if session.pinned {
+                    Image(systemName: "pin.fill").font(.system(size: 9.5)).foregroundStyle(.tertiary).accessibilityLabel("Pinned")
+                }
                 StatusPill(status: session.status)
             }
 
@@ -294,7 +336,8 @@ struct SessionCard: View {
                 Text(session.updatedAt, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
                     .monospacedDigit().lineLimit(1).fixedSize()
                 Spacer(minLength: 4)
-                MoreMenu(session: session).opacity(hovering ? 1 : 0)
+                reviewBadge
+                MoreMenu(session: session, rename: startRename, review: openReview).opacity(hovering ? 1 : 0)
             }
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
@@ -340,8 +383,60 @@ struct SessionCard: View {
                 radius: hovering ? 10 : 4, y: hovering ? 4 : 1)
         .contentShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
         .onTapGesture { SessionActions.openCopilot() }
-        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hovering = h } }
+        .onHover { h in withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { hovering = h } }
         .help("Click to open this session")
+        .task(id: session.updatedAt) { InspectorCache.shared.refresh(session) }
+        .contextMenu {
+            Button { startRename() } label: { Label("Rename…", systemImage: "pencil") }
+            Button { MetaStore.shared.togglePin(session.id) } label: { Label(session.pinned ? "Unpin" : "Pin to top", systemImage: session.pinned ? "pin.slash" : "pin") }
+            Button { openReview() } label: { Label("Review changes…", systemImage: "rectangle.on.rectangle") }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(session.title), \(session.status.label), \(session.repoShortName)")
+        .accessibilityAction(named: session.pinned ? "Unpin" : "Pin") { MetaStore.shared.togglePin(session.id) }
+        .accessibilityAction(named: "Review changes") { openReview() }
+    }
+
+    private func startRename() {
+        draft = session.title
+        renaming = true
+        DispatchQueue.main.async { renameFocus = true }
+    }
+    private func commitRename() {
+        let t = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Writing the original title back (or nothing) clears your own name.
+        MetaStore.shared.rename(session.id, to: (t.isEmpty || t == session.generatedTitle) ? nil : t)
+        renaming = false
+    }
+    private func openReview() {
+        openWindow(id: InspectorWindowID.id, value: session.id)
+        NSApp.activate()
+    }
+
+    /// "Review · 5 files" and, when something strays from the design system, a warning dot with its count.
+    @ViewBuilder private var reviewBadge: some View {
+        let sum = inspectorCache.summary(session.id)
+        if sum.isRepo && sum.changedFiles > 0 {
+            Button { openReview() } label: {
+                HStack(spacing: 4) {
+                    if sum.drift > 0 {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 8.5)).foregroundStyle(Palette.attention)
+                        Text("\(sum.drift)").foregroundStyle(Palette.attention)
+                    }
+                    Text("Review")
+                    Image(systemName: "chevron.right").font(.system(size: 7.5, weight: .bold))
+                }
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7).frame(height: 18)
+                .background(Capsule().fill(Palette.well.opacity(hovering ? 1 : 0.7)))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help(sum.drift > 0 ? "\(sum.changedFiles) changed files, \(sum.drift) values outside your design system. Open the review."
+                                : "\(sum.changedFiles) changed files. See what changed on screen.")
+            .accessibilityLabel("Review \(sum.changedFiles) changed files" + (sum.drift > 0 ? ", \(sum.drift) outside design system" : ""))
+        }
     }
 
     private var cardBackground: some View {
@@ -478,12 +573,15 @@ struct FilterControl: View {
 }
 
 struct SectionHeader: View {
-    let status: SessionStatus
+    let title: String
+    let tint: Color
     let count: Int
+    var symbol: String? = nil
     var body: some View {
         HStack(spacing: 6) {
-            Circle().fill(status.tint).frame(width: 5, height: 5)
-            Text(status.sectionTitle.uppercased())
+            if let symbol { Image(systemName: symbol).font(.system(size: 8, weight: .bold)).foregroundStyle(tint) }
+            else { Circle().fill(tint).frame(width: 5, height: 5) }
+            Text(title.uppercased())
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
@@ -499,13 +597,19 @@ struct SectionHeader: View {
 struct SpinningArc: View {
     let tint: Color
     var lineWidth: CGFloat = 2
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        TimelineView(.animation) { ctx in
-            let t = ctx.date.timeIntervalSinceReferenceDate
-            Circle()
-                .trim(from: 0, to: 0.3)
-                .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .rotationEffect(.degrees(t.truncatingRemainder(dividingBy: 1.1) / 1.1 * 360))
+        if reduceMotion {
+            // A still, half-drawn ring says "in progress" without any movement.
+            Circle().trim(from: 0, to: 0.6).stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)).rotationEffect(.degrees(-90))
+        } else {
+            TimelineView(.animation) { ctx in
+                let t = ctx.date.timeIntervalSinceReferenceDate
+                Circle()
+                    .trim(from: 0, to: 0.3)
+                    .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(t.truncatingRemainder(dividingBy: 1.1) / 1.1 * 360))
+            }
         }
     }
 }
@@ -643,9 +747,23 @@ struct LiveIndicator: View {
 
 struct MoreMenu: View {
     let session: CopilotSession
+    var rename: () -> Void = {}
+    var review: () -> Void = {}
     @State private var hover = false
     var body: some View {
         Menu {
+            Button { review() } label: { Label("Review changes…", systemImage: "rectangle.on.rectangle") }
+            Divider()
+            Button { MetaStore.shared.togglePin(session.id) } label: { Label(session.pinned ? "Unpin" : "Pin to top", systemImage: session.pinned ? "pin.slash" : "pin") }
+            Button { rename() } label: { Label("Rename…", systemImage: "pencil") }
+            Menu {
+                ForEach(TagColor.allCases, id: \.self) { t in
+                    Button { MetaStore.shared.setTag(session.id, t) } label: {
+                        Label(t.label, systemImage: session.tag == t ? "checkmark.circle.fill" : (t == .none ? "circle.slash" : "circle.fill"))
+                    }
+                }
+            } label: { Label("Colour tag", systemImage: "tag") }
+            Divider()
             Button { SessionActions.showInFinder(session) } label: { Label("Show project files in Finder", systemImage: "folder") }
             Button { SessionActions.openInEditor(session) } label: { Label("Open in code editor", systemImage: "chevron.left.forwardslash.chevron.right") }
             if session.repository != nil {

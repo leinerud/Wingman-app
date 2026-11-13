@@ -28,6 +28,12 @@ struct PajlotAssistApp: App {
         .defaultPosition(.center)
         .defaultLaunchBehavior(Prefs.hasSeenWelcome ? .suppressed : .presented)
 
+        // "Review": what a session changed on screen, token check, timeline and live preview.
+        WindowGroup("Review", id: InspectorWindowID.id, for: String.self) { $sessionID in
+            InspectorWindow(sessionID: sessionID ?? "").environmentObject(store)
+        }
+        .defaultSize(width: 780, height: 640)
+
         Settings {
             SettingsView()
         }
@@ -40,6 +46,8 @@ struct PajlotAssistApp: App {
         .menuBarExtraStyle(.window)
     }
 }
+
+enum InspectorWindowID { static let id = "inspector" }
 
 enum MainWindow {
     static let id = "main"

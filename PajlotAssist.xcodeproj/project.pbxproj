@@ -26,6 +26,10 @@
 		FB01 /* Inter-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA01 /* Inter-Medium.ttf */; };
 		FB02 /* Inter-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA02 /* Inter-SemiBold.ttf */; };
 		FB03 /* Inter-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA03 /* Inter-Bold.ttf */; };
+		B114 /* SessionMeta.swift in Sources */ = {isa = PBXBuildFile; fileRef = A114 /* SessionMeta.swift */; };
+		B115 /* Inspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A115 /* Inspector.swift */; };
+		B116 /* InspectorViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A116 /* InspectorViews.swift */; };
+		B201 /* WidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A201 /* WidgetIntents.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -76,6 +80,10 @@
 		FA01 /* Inter-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Medium.ttf"; sourceTree = "<group>"; };
 		FA02 /* Inter-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-SemiBold.ttf"; sourceTree = "<group>"; };
 		FA03 /* Inter-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Bold.ttf"; sourceTree = "<group>"; };
+		A114 /* SessionMeta.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMeta.swift; sourceTree = "<group>"; };
+		A115 /* Inspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Inspector.swift; sourceTree = "<group>"; };
+		A116 /* InspectorViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorViews.swift; sourceTree = "<group>"; };
+		A201 /* WidgetIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetIntents.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -120,6 +128,9 @@
 				A111 /* WidgetSnapshot.swift */,
 				A112 /* Preferences.swift */,
 				A113 /* WelcomeView.swift */,
+				A114 /* SessionMeta.swift */,
+				A115 /* Inspector.swift */,
+				A116 /* InspectorViews.swift */,
 			);
 			name = PajlotAssist;
 			path = Sources/PajlotAssist;
@@ -149,6 +160,7 @@
 			isa = PBXGroup;
 			children = (
 				A200 /* PajlotWidget.swift */,
+				A201 /* WidgetIntents.swift */,
 			);
 			name = PajlotWidget;
 			path = Sources/PajlotWidget;
@@ -288,6 +300,9 @@
 				B111 /* WidgetSnapshot.swift in Sources */,
 				B112 /* Preferences.swift in Sources */,
 				B113 /* WelcomeView.swift in Sources */,
+				B114 /* SessionMeta.swift in Sources */,
+				B115 /* Inspector.swift in Sources */,
+				B116 /* InspectorViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -297,6 +312,7 @@
 			files = (
 				B200 /* PajlotWidget.swift in Sources */,
 				B211 /* WidgetSnapshot.swift in Sources */,
+				B201 /* WidgetIntents.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

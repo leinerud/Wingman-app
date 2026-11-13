@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
 
 @main
 struct PajlotWidgetBundle: WidgetBundle {
@@ -190,6 +191,7 @@ private struct Row: View {
         return f.localizedString(for: d, relativeTo: .now)
     }
     @Environment(\.widgetRenderingMode) private var mode
+    @Environment(\.widgetFamily) private var family
 
     var body: some View {
         let tint = Tint.status(session.status, scheme)
@@ -200,6 +202,15 @@ private struct Row: View {
                     Text(session.title).font(.inter(14, .semibold)).lineLimit(1)
                     Spacer(minLength: 4)
                     Text(Self.ago(session.updatedAt)).font(.inter(12, .regular)).foregroundStyle(.secondary).lineLimit(1)
+                    if family != .systemSmall {
+                        Button(intent: TogglePinIntent(sessionID: session.id)) {
+                            Image(systemName: session.pinned == true ? "pin.fill" : "pin")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(session.pinned == true ? Color.primary : Color.secondary.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(session.pinned == true ? "Unpin" : "Pin")
+                    }
                 }
                 HStack(spacing: 4) {
                     Text(session.status == "working" ? session.activity : Tint.label(session.status))

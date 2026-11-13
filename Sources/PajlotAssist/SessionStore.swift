@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import WidgetKit
+import Combine
 
 @MainActor
 final class SessionStore: ObservableObject {
@@ -23,6 +24,8 @@ final class SessionStore: ObservableObject {
     private var loading = false
     private var refreshAgain = false
     private var ticks = 0
+    private var rawSessions: [CopilotSession] = []
+    private var metaSub: AnyCancellable?
 
     var activeCount: Int { sessions.filter(\.isActive).count }
     var needsInputCount: Int { sessions.filter { $0.status == .needsInput }.count }
@@ -30,6 +33,10 @@ final class SessionStore: ObservableObject {
     /// `home` is only overridden by tests; the app always reads the user's own ~/.copilot.
     init(home: String = FileManager.default.homeDirectoryForCurrentUser.path) {
         self.home = home
+        // Names, pins and tags apply instantly, without waiting for the next reload.
+        metaSub = MetaStore.shared.$meta.dropFirst().sink { [weak self] _ in
+            DispatchQueue.main.async { self?.reapplyMeta() }
+        }
         refresh(scan: true)
         // React to Copilot writing to a session within a fraction of a second.
         watcher = FolderWatcher(path: home + "/.copilot/session-state", latency: 0.25) { [weak self] paths in
@@ -40,6 +47,7 @@ final class SessionStore: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.ticks += 1
+                self.drainWidgetActions()
                 self.refresh(scan: self.ticks % 20 == 0)
             }
         }
@@ -75,7 +83,8 @@ final class SessionStore: ObservableObject {
                 self.cache = newCache
                 let before = Dictionary(uniqueKeysWithValues: self.sessions.map { ($0.id, $0.status) })
                 if result.contains(where: { before[$0.id] == .working && ($0.status == .idle || $0.status == .stopped) }) { self.doneAt = Date() }
-                self.sessions = result
+                self.rawSessions = result
+                self.sessions = Self.arranged(result.map(MetaStore.shared.apply))
                 self.publishToWidget()
                 self.lastRefresh = Date()
                 self.loading = false
@@ -84,16 +93,35 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    private func reapplyMeta() {
+        sessions = Self.arranged(rawSessions.map(MetaStore.shared.apply))
+        publishToWidget()
+    }
+
+    /// Pinned sessions first, otherwise Copilot's own order.
+    private static func arranged(_ list: [CopilotSession]) -> [CopilotSession] {
+        list.enumerated().sorted { a, b in
+            if a.element.pinned != b.element.pinned { return a.element.pinned }
+            return a.offset < b.offset
+        }.map(\.element)
+    }
+
+    /// Applies taps made on the desktop widget's pin buttons.
+    private func drainWidgetActions() {
+        let actions = WidgetActions.drain()
+        for id in actions.togglePin { MetaStore.shared.togglePin(id) }
+    }
+
     // MARK: - Widget
 
     private var lastWidgetSessions: [WidgetSnapshot.Session]?
 
     /// Hands the desktop widget a fresh summary, but only reloads it when something it shows changed.
     private func publishToWidget() {
-        let items = sessions.filter { $0.status != .stopped }.prefix(8).map {
+        let items = sessions.filter { $0.status != .stopped || $0.pinned }.prefix(8).map {
             WidgetSnapshot.Session(id: $0.id, title: $0.title, repo: $0.repoShortName, status: $0.status.rawValue,
                                    activity: $0.activity, question: $0.question,
-                                   done: $0.doneCount, total: $0.todos.count, updatedAt: $0.updatedAt)
+                                   done: $0.doneCount, total: $0.todos.count, updatedAt: $0.updatedAt, pinned: $0.pinned)
         }
         guard items != lastWidgetSessions else { return }
         lastWidgetSessions = items
