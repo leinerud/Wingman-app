@@ -396,7 +396,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				OTHER_LDFLAGS = "-lsqlite3";
 				MARKETING_VERSION = 0.1;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				PRODUCT_BUNDLE_IDENTIFIER = se.humblebee.PajlotAssist;
 				PRODUCT_NAME = PajlotAssist;
 				REGISTER_APP_GROUPS = YES;
@@ -419,7 +419,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MARKETING_VERSION = 0.1;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				PRODUCT_BUNDLE_IDENTIFIER = se.humblebee.PajlotAssist.Widget;
 				PRODUCT_NAME = PajlotWidget;
 				REGISTER_APP_GROUPS = YES;
@@ -430,6 +430,7 @@
 		IR1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
 				CLANG_WARN_BOOL_CONVERSION = YES;
 				CLANG_WARN_COMMA = YES;
@@ -484,7 +485,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				OTHER_LDFLAGS = "-lsqlite3";
 				MARKETING_VERSION = 0.1;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				PRODUCT_BUNDLE_IDENTIFIER = se.humblebee.PajlotAssist;
 				PRODUCT_NAME = PajlotAssist;
 				REGISTER_APP_GROUPS = YES;
@@ -505,7 +506,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MARKETING_VERSION = 0.1;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				PRODUCT_BUNDLE_IDENTIFIER = se.humblebee.PajlotAssist.Widget;
 				PRODUCT_NAME = PajlotWidget;
 				REGISTER_APP_GROUPS = YES;
