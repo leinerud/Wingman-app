@@ -93,7 +93,7 @@ final class SessionStore: ObservableObject {
         // Until the folder is allowed there is nothing to read (and nothing to log every few seconds).
         let readable = home.isEmpty || Access.canRead(home + "/.copilot/session-state")
         if needsAccess == readable { needsAccess = !readable }
-        if !readable { return }
+        if !readable { publishAccessNeeded(); return }
         if loading { refreshAgain = true; return }
         loading = true
         let home = home
@@ -139,6 +139,18 @@ final class SessionStore: ObservableObject {
     // MARK: - Widget
 
     private var lastWidgetSessions: [WidgetSnapshot.Session]?
+    private var lastWidgetSave = Date.distantPast
+    private var lastWidgetNeedsAccess = false
+
+    /// Tells the widget the app is alive but can't see any sessions yet.
+    private func publishAccessNeeded() {
+        guard !lastWidgetNeedsAccess else { return }
+        lastWidgetNeedsAccess = true
+        lastWidgetSessions = nil
+        if WidgetSnapshot(sessions: [], savedAt: Date(), needsAccess: true).save() {
+            WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshot.widgetKind)
+        }
+    }
 
     /// Hands the desktop widget a fresh summary, but only reloads it when something it shows changed.
     private func publishToWidget() {
@@ -147,8 +159,11 @@ final class SessionStore: ObservableObject {
                                    activity: $0.activity, question: $0.question,
                                    done: $0.doneCount, total: $0.todos.count, updatedAt: $0.updatedAt, pinned: $0.pinned)
         }
-        guard items != lastWidgetSessions else { return }
+        // Also a heartbeat every 10 minutes, so the widget can tell "nothing changed" from "the app isn't running".
+        guard items != lastWidgetSessions || lastWidgetNeedsAccess || Date().timeIntervalSince(lastWidgetSave) > 600 else { return }
         lastWidgetSessions = items
+        lastWidgetNeedsAccess = false
+        lastWidgetSave = Date()
         if WidgetSnapshot(sessions: Array(items), savedAt: Date()).save() {
             WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshot.widgetKind)
         }

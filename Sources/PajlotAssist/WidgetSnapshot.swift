@@ -17,9 +17,13 @@ struct WidgetSnapshot: Codable, Equatable {
     }
     var sessions: [Session] = []
     var savedAt = Date.distantPast
+    /// Set when the app can't read Copilot's folder yet, so the widget can say so instead of showing old data.
+    var needsAccess: Bool? = nil
 
     static let appGroup = "RD223D229Z.se.humblebee.PajlotAssist"
     static let widgetKind = "PajlotSessions"
+    /// The app refreshes the file at least every 10 minutes while it runs; older than this means it isn't.
+    static let staleAfter: TimeInterval = 25 * 60
 
     private static var fileURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?

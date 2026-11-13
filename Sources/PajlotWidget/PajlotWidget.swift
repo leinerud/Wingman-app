@@ -57,8 +57,10 @@ struct Provider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
         // The app reloads the widget whenever a session changes; this is only a fallback.
-        completion(Timeline(entries: [Entry(date: .now, snapshot: WidgetSnapshot.load())],
-                            policy: .after(.now.addingTimeInterval(15 * 60))))
+        // A second entry later on lets the widget admit it is out of date even if the app never wakes it again.
+        let snap = WidgetSnapshot.load()
+        let entries = [Entry(date: .now, snapshot: snap), Entry(date: .now.addingTimeInterval(WidgetSnapshot.staleAfter + 60), snapshot: snap)]
+        completion(Timeline(entries: entries, policy: .after(.now.addingTimeInterval(15 * 60))))
     }
 }
 
@@ -112,11 +114,29 @@ struct WidgetView: View {
     private var needs: Int { sessions.filter { $0.status == "needsInput" }.count }
     private var working: Int { sessions.filter { $0.status == "working" }.count }
 
+    /// The app sends a sign of life every few minutes. If it stops, what we show may no longer be true.
+    private var stale: Bool { entry.date.timeIntervalSince(entry.snapshot.savedAt) > WidgetSnapshot.staleAfter }
+
     var body: some View {
         Group {
-            if family == .systemSmall { small } else { list(max: family == .systemExtraLarge ? 8 : family == .systemLarge ? 5 : 2) }
+            if entry.snapshot.needsAccess == true { notice("lock", "Allow access", "Open Pajlot Assist and choose your .copilot folder.") }
+            else if stale && sessions.isEmpty { notice("moon.zzz", "Not running", "Open Pajlot Assist to see your sessions.") }
+            else if family == .systemSmall { small } else { list(max: family == .systemExtraLarge ? 8 : family == .systemLarge ? 5 : 2) }
         }
+        .opacity(stale ? 0.55 : 1)
         .containerBackground(Tint.canvas(scheme), for: .widget)
+    }
+
+    private func notice(_ symbol: String, _ title: String, _ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            header
+            Spacer(minLength: 0)
+            Image(systemName: symbol).font(.inter(20, .regular)).foregroundStyle(.secondary)
+            Text(title).font(.inter(15, .semibold))
+            Text(message).font(.inter(12, .regular)).foregroundStyle(.secondary).lineLimit(3)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     // Small: the headline number and the session that matters most.
@@ -125,10 +145,10 @@ struct WidgetView: View {
             header
             Spacer(minLength: 0)
             if let top = sessions.first {
-                Text(needs > 0 ? "\(needs)" : "\(working)")
+                Text(stale ? "–" : needs > 0 ? "\(needs)" : "\(working)")
                     .font(.inter(46, .bold))
                     .foregroundStyle(needs > 0 ? Tint.attention(scheme) : .primary)
-                Text(needs > 0 ? "need you" : working > 0 ? "working" : "all done")
+                Text(stale ? "out of date" : needs > 0 ? "need you" : working > 0 ? "working" : "all done")
                     .font(.inter(14, .medium)).foregroundStyle(.secondary)
                 Text(top.title).font(.inter(14, .semibold)).lineLimit(2).padding(.top, 2)
             } else {
@@ -156,7 +176,9 @@ struct WidgetView: View {
             LogoMark().frame(width: 18, height: 18).foregroundStyle(scheme == .dark ? Color(white: 0.95) : Color(red: 0x23/255, green: 0x23/255, blue: 0x23/255)).widgetAccentable()
             Text("Pajlot").font(.inter(15, .semibold))
             Spacer(minLength: 0)
-            if family != .systemSmall {
+            if stale && family != .systemSmall {
+                Badge(text: "Out of date · open the app", tint: .secondary)
+            } else if family != .systemSmall {
                 if needs > 0 { Badge(text: "\(needs) need you", tint: Tint.attention(scheme)) }
                 if working > 0 { Badge(text: "\(working) working", tint: .secondary) }
             }
