@@ -9,6 +9,8 @@ final class SessionStore: ObservableObject {
     @Published private(set) var lastRefresh = Date()
     /// Set when a session goes from working to finished; drives the "done" icon until seen.
     @Published var doneAt: Date?
+    /// True while the sandbox hasn't been given the .copilot folder yet.
+    @Published private(set) var needsAccess = false
 
     private let home: String
     private var timer: Timer?
@@ -26,22 +28,25 @@ final class SessionStore: ObservableObject {
     private var ticks = 0
     private var rawSessions: [CopilotSession] = []
     private var metaSub: AnyCancellable?
+    private var accessSub: AnyCancellable?
 
     var activeCount: Int { sessions.filter(\.isActive).count }
     var needsInputCount: Int { sessions.filter { $0.status == .needsInput }.count }
 
     /// `home` is only overridden by tests; the app always reads the user's own ~/.copilot.
-    init(home: String = FileManager.default.homeDirectoryForCurrentUser.path) {
+    init(home: String = Access.realHome) {
         self.home = home
+        Access.restore()
+        needsAccess = !Access.canRead(home + "/.copilot/session-state")
         // Names, pins and tags apply instantly, without waiting for the next reload.
         metaSub = MetaStore.shared.$meta.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async { self?.reapplyMeta() }
         }
-        refresh(scan: true)
-        // React to Copilot writing to a session within a fraction of a second.
-        watcher = FolderWatcher(path: home + "/.copilot/session-state", latency: 0.25) { [weak self] paths in
-            MainActor.assumeIsolated { self?.filesChanged(paths) }
+        accessSub = NotificationCenter.default.publisher(for: .accessChanged).sink { [weak self] _ in
+            DispatchQueue.main.async { self?.accessChanged() }
         }
+        refresh(scan: true)
+        startWatching()
         // Fallback tick: keeps "x min ago" fresh and catches anything the watcher misses.
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -50,6 +55,21 @@ final class SessionStore: ObservableObject {
                 self.drainWidgetActions()
                 self.refresh(scan: self.ticks % 20 == 0)
             }
+        }
+    }
+
+    /// Called after the user picks the .copilot folder.
+    func accessChanged() {
+        needsAccess = !Access.canRead(home + "/.copilot/session-state")
+        startWatching()
+        refresh(scan: true)
+    }
+
+    private func startWatching() {
+        watcher = nil
+        // React to Copilot writing to a session within a fraction of a second.
+        watcher = FolderWatcher(path: home + "/.copilot/session-state", latency: 0.25) { [weak self] paths in
+            MainActor.assumeIsolated { self?.filesChanged(paths) }
         }
     }
 
@@ -70,6 +90,10 @@ final class SessionStore: ObservableObject {
 
     /// Reloads all sessions off the main thread. Calls that arrive mid-load are coalesced into one follow-up.
     func refresh(scan: Bool = false) {
+        // Until the folder is allowed there is nothing to read (and nothing to log every few seconds).
+        let readable = home.isEmpty || Access.canRead(home + "/.copilot/session-state")
+        if needsAccess == readable { needsAccess = !readable }
+        if !readable { return }
         if loading { refreshAgain = true; return }
         loading = true
         let home = home
@@ -234,7 +258,7 @@ final class SessionStore: ObservableObject {
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return false }
         for f in files where f.hasPrefix("inuse.") && f.hasSuffix(".lock") {
             let parts = f.split(separator: ".")
-            if parts.count == 3, let pid = Int32(parts[1]), kill(pid, 0) == 0 { return true }
+            if parts.count == 3, let pid = Int32(parts[1]), (kill(pid, 0) == 0 || errno == EPERM) { return true }   // EPERM: it exists, the sandbox just won't let us signal it
         }
         return false
     }

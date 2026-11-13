@@ -69,7 +69,18 @@ struct InspectorWindow: View {
             header
             Divider().opacity(0.5)
             Group {
-                if let s = session {
+                if let s = session, model.data.needsAccess {
+                    VStack(spacing: 12) {
+                        EmptyNote(symbol: "lock", title: "Allow access to this project",
+                                  message: "macOS keeps apps out of your folders until you say so. Pick this project, or a parent folder such as Developer to cover all of them.")
+                        Button("Choose folder…") {
+                            if Access.requestProjectFolder(for: s.cwd) { model.load(cwd: s.cwd); InspectorCache.shared.forget(s.id) }
+                        }.buttonStyle(PillButtonStyle(tint: Palette.accent, filled: true)).padding(.bottom, 30)
+                    }
+                } else if model.data.gitMissing {
+                    EmptyNote(symbol: "exclamationmark.triangle", title: "Git isn't available here",
+                              message: "Review needs git to compare versions. Install Xcode or the Command Line Tools (xcode-select --install) and reopen this window.")
+                } else if let s = session {
                     switch tab {
                     case .changes: ChangesTab(model: model, session: s)
                     case .tokens: TokensTab(model: model, session: s)

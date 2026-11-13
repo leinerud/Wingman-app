@@ -210,12 +210,33 @@ private struct MockWidget: View {
 
 // MARK: - Settings
 
+/// Shows which folders Pajlot Assist may read, and lets you change them.
+struct AccessSettings: View {
+    @State private var copilot = Access.hasCopilotAccess
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Pajlot Assist only reads. It never changes your sessions or projects. macOS needs your OK for each folder.")
+                .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Image(systemName: copilot ? "checkmark.circle.fill" : "exclamationmark.circle").foregroundStyle(copilot ? Palette.ready : Palette.attention)
+                Text(copilot ? "Copilot sessions (.copilot)" : "Copilot sessions: not allowed yet").font(.system(size: 12))
+                Spacer()
+                Button(copilot ? "Change…" : "Choose…") { Access.requestCopilotFolder(); copilot = Access.hasCopilotAccess }
+            }
+            Text("Project folders are requested the first time you open Review for a project.")
+                .font(.system(size: 11)).foregroundStyle(.tertiary)
+        }
+    }
+}
+
 struct SettingsView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             section("Where Pajlot Assist lives") { PlacementPicker() }
+            section("Access to your files") { AccessSettings() }
             section("Desktop widget") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("See your sessions right on the desktop, in a small, medium or large size. It updates while Pajlot Assist is running.")

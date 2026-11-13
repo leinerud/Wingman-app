@@ -6,11 +6,21 @@ import SwiftUI
 // MARK: - Git
 
 enum Git {
+    /// Real git binaries are preferred over /usr/bin/git, which is a shim that can't run inside the sandbox.
+    nonisolated static let executable: String? = [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/git",
+        "/Library/Developer/CommandLineTools/usr/bin/git",
+        "/opt/homebrew/bin/git",
+        "/usr/local/bin/git",
+        "/usr/bin/git",
+    ].first { FileManager.default.isExecutableFile(atPath: $0) }
+
     /// Runs a read-only git command in `cwd`. Returns nil when git fails or the folder isn't a repository.
     nonisolated static func run(_ args: [String], cwd: String) -> String? {
         guard !cwd.isEmpty, FileManager.default.fileExists(atPath: cwd) else { return nil }
+        guard let exe = executable else { return nil }
         let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        p.executableURL = URL(fileURLWithPath: exe)
         p.arguments = ["-c", "core.quotepath=off", "-C", cwd] + args
         var env = ProcessInfo.processInfo.environment
         env["GIT_OPTIONAL_LOCKS"] = "0"      // never touch the index, so we can't disturb a running session
@@ -116,6 +126,10 @@ enum InspectScope: Hashable {
 
 struct InspectorData {
     var isRepo = true
+    /// The sandbox hasn't been given this project folder yet.
+    var needsAccess = false
+    /// Git couldn't be started at all (so "not a repository" would be the wrong message).
+    var gitMissing = false
     var branch: String?
     var scope: InspectScope = .working
     var changes: [ScreenChange] = []
@@ -449,6 +463,8 @@ enum TokenGuard {
 enum Inspector {
     nonisolated static func inspect(cwd: String, scope: InspectScope) -> InspectorData {
         var data = InspectorData(scope: scope)
+        guard Access.canRead(cwd) else { data.needsAccess = true; data.isRepo = false; return data }
+        guard Git.run(["--version"], cwd: cwd) != nil else { data.gitMissing = true; data.isRepo = false; return data }
         guard Git.run(["rev-parse", "--is-inside-work-tree"], cwd: cwd) != nil else { data.isRepo = false; return data }
 
         data.branch = Git.run(["rev-parse", "--abbrev-ref", "HEAD"], cwd: cwd)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -529,6 +545,9 @@ final class InspectorCache: ObservableObject {
     private var inFlight: Set<String> = []
 
     func summary(_ id: String) -> DriftSummary { summaries[id] ?? DriftSummary() }
+
+    /// Forces a fresh look, e.g. after the user has allowed a project folder.
+    func forget(_ id: String) { lastKey[id] = nil }
 
     /// Looks again only when the session has actually done something new.
     func refresh(_ s: CopilotSession) {

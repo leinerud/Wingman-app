@@ -118,7 +118,7 @@ struct PopoverView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if shown.isEmpty { emptyState } else { list }
+            if store.needsAccess { accessNeeded } else if shown.isEmpty { emptyState } else { list }
             footer
         }
         .modifier(SizingModifier(resizable: resizable))
@@ -199,6 +199,25 @@ struct PopoverView: View {
                 LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 14)
             }
         }
+    }
+
+    /// Shown until the sandbox has been allowed to read Copilot's session folder.
+    private var accessNeeded: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle().fill(Palette.accent.opacity(0.07)).frame(width: 72, height: 72)
+                Circle().fill(Palette.accent.opacity(0.12)).frame(width: 48, height: 48)
+                Image(systemName: "lock.open.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(Palette.accent)
+            }
+            .padding(.bottom, 4)
+            Text("Let Pajlot Assist see your sessions").font(.system(size: 13, weight: .semibold))
+            Text("macOS asks you to approve this once. Pick the “.copilot” folder in your home folder. It is only read, never changed.")
+                .font(.system(size: 11.5)).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 270)
+            Button { Access.requestCopilotFolder(); store.accessChanged() } label: { Text("Choose .copilot folder…") }
+                .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: true)).padding(.top, 6)
+        }
+        .frame(maxWidth: .infinity, maxHeight: resizable ? .infinity : nil)
+        .padding(.top, 26).padding(.bottom, 34)
     }
 
     private var emptyState: some View {
