@@ -77,9 +77,6 @@ struct InspectorWindow: View {
                             if Access.requestProjectFolder(for: s.cwd) { model.load(cwd: s.cwd); InspectorCache.shared.forget(s.id) }
                         }.buttonStyle(PillButtonStyle(tint: Palette.accent, filled: true)).padding(.bottom, 30)
                     }
-                } else if model.data.gitMissing {
-                    EmptyNote(symbol: "exclamationmark.triangle", title: "Git isn't available here",
-                              message: "Review needs git to compare versions. Install Xcode or the Command Line Tools (xcode-select --install) and reopen this window.")
                 } else if let s = session {
                     switch tab {
                     case .changes: ChangesTab(model: model, session: s)
@@ -175,6 +172,7 @@ private struct ChangesTab: View {
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    if d.basicMode { BasicNotice() }
                     summary(d)
                     ForEach(d.changes) { ChangeCard(change: $0, cwd: session.cwd) }
                 }
@@ -191,13 +189,18 @@ private struct ChangesTab: View {
                 Button { model.load(cwd: session.cwd, scope: .working) } label: { Label("Back to current changes", systemImage: "chevron.left") }
                     .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: false))
                 Text("Version \(String(sha.prefix(7)))").font(.system(size: 11.5)).foregroundStyle(.secondary)
+            } else if d.basicMode {
+                Text("\(d.dirtyFiles) \(d.dirtyFiles == 1 ? "file" : "files") edited in the last 3 hours")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
             } else {
                 Text("\(d.changes.count) \(d.changes.count == 1 ? "thing" : "things") changed, not yet saved as a version")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
             Spacer()
-            Text("+\(d.added)").foregroundStyle(Palette.ready)
-            Text("−\(d.removed)").foregroundStyle(Palette.attention)
+            if !d.basicMode {
+                Text("+\(d.added)").foregroundStyle(Palette.ready)
+                Text("−\(d.removed)").foregroundStyle(Palette.attention)
+            }
         }
         .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
     }
@@ -222,7 +225,9 @@ private struct ChangeCard: View {
                     Text(change.kind.label).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("+\(change.added) −\(change.removed)").font(.system(size: 11, weight: .medium).monospacedDigit()).foregroundStyle(.tertiary)
+                if change.added + change.removed > 0 {
+                    Text("+\(change.added) −\(change.removed)").font(.system(size: 11, weight: .medium).monospacedDigit()).foregroundStyle(.tertiary)
+                }
             }
             if !change.changes.isEmpty {
                 VStack(spacing: 0) {
@@ -256,6 +261,18 @@ private struct ChangeCard: View {
         .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.card))
         .overlay(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).strokeBorder(Palette.hairline))
         .accessibilityElement(children: .contain)
+    }
+}
+
+private struct BasicNotice: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle").foregroundStyle(.secondary)
+            Text("Simple view: git can't run here, so you see which files were edited recently, not what changed inside them.")
+                .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Palette.well.opacity(0.7)))
     }
 }
 
@@ -315,6 +332,9 @@ private struct TokensTab: View {
         let d = model.data
         if !d.isRepo {
             EmptyNote(symbol: "folder.badge.questionmark", title: "No version history here", message: "The token check compares new changes against your project's own values.")
+        } else if d.basicMode {
+            EmptyNote(symbol: "paintpalette", title: "The token check needs git",
+                      message: "This version of the app can't run git on your Mac, so it can't tell which values are new. Changes and the timeline still work in a simpler form.")
         } else if d.findings.isEmpty {
             EmptyNote(symbol: "checkmark.seal", title: "On-system",
                       message: d.hasTokenFile
@@ -405,7 +425,7 @@ private struct TimelineTab: View {
                 HStack(spacing: 6) {
                     if current {
                         Button("See changes") { model.load(cwd: session.cwd, scope: .working); goToChanges() }.buttonStyle(PillButtonStyle(tint: Palette.accent, filled: false))
-                    } else if let sha {
+                    } else if let sha, !model.data.basicMode {
                         Button("See what changed") { model.load(cwd: session.cwd, scope: .commit(sha.sha)); goToChanges() }
                             .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: false))
                         Menu {

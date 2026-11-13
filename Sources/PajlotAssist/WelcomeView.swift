@@ -17,8 +17,9 @@ struct WelcomeView: View {
                 .padding(.top, 34).padding(.bottom, 24)
 
             VStack(alignment: .leading, spacing: 22) {
-                block(number: 1, title: "Where should it live?") { PlacementPicker() }
-                block(number: 2, title: "Add it to your desktop, too") {
+                block(number: 1, title: "Let it see your sessions") { CopilotAccessGuide() }
+                block(number: 2, title: "Where should it live?") { PlacementPicker() }
+                block(number: 3, title: "Add it to your desktop, too") {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Pajlot Assist comes with a widget, so you can keep an eye on your sessions without opening anything.")
                             .font(.system(size: 11.5)).foregroundStyle(.secondary)

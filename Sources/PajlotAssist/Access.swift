@@ -57,7 +57,7 @@ enum Access {
     /// Asks the user to pick the `.copilot` folder. Returns true once it can be read.
     @MainActor @discardableResult
     static func requestCopilotFolder() -> Bool {
-        guard let url = panel(message: "Choose the “.copilot” folder in your home folder. Pajlot Assist only reads it to show your sessions.",
+        guard let url = panel(message: "Select the “.copilot” folder in your home folder and click Allow. Pajlot Assist only reads it to show your sessions.",
                               prompt: "Allow", start: URL(fileURLWithPath: copilotPath), hidden: true) else { return hasCopilotAccess }
         guard url.lastPathComponent == ".copilot" else {
             let a = NSAlert()
@@ -82,5 +82,57 @@ enum Access {
         var keys = (UserDefaults.standard.array(forKey: projectsKey) as? [String]) ?? []
         if !keys.contains(key) { keys.append(key); UserDefaults.standard.set(keys, forKey: projectsKey) }
         return canRead(path)
+    }
+}
+
+// MARK: - Guide shown in the welcome screen and wherever access is missing
+
+/// Explains, step by step, how to let the app read Copilot's session folder.
+struct CopilotAccessGuide: View {
+    var compact = false
+    var onChange: () -> Void = {}
+    @State private var granted = Access.hasCopilotAccess
+    @State private var missing = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if granted {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.ready)
+                    Text("Connected. Your sessions show up automatically.").font(.system(size: 12.5, weight: .medium))
+                }
+            } else {
+                Text("Your Copilot sessions are stored in a hidden folder called “.copilot”. macOS asks you to approve access once. Pajlot Assist only reads it and never changes anything.")
+                    .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 6) {
+                    step(1, "Click “Choose .copilot folder…”")
+                    step(2, "In the window, open your home folder (the one with your name) and select “.copilot”")
+                    step(3, "Click “Allow”")
+                }
+                Text("Can't see it? Hidden folders are shown here, or press ⌘⇧. to toggle them.")
+                    .font(.system(size: 11)).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+                if missing {
+                    Text("There is no .copilot folder on this Mac yet. Start a chat in the GitHub app first, then try again.")
+                        .font(.system(size: 11.5, weight: .medium)).foregroundStyle(Palette.attention).fixedSize(horizontal: false, vertical: true)
+                }
+                Button("Choose .copilot folder…") {
+                    missing = !FileManager.default.fileExists(atPath: Access.copilotPath)
+                    if missing { return }
+                    Access.requestCopilotFolder()
+                    granted = Access.hasCopilotAccess
+                    onChange()
+                }
+                .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: true))
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .accessChanged)) { _ in granted = Access.hasCopilotAccess }
+    }
+
+    private func step(_ n: Int, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(n)").font(.system(size: 10, weight: .bold)).foregroundStyle(Palette.accent)
+                .frame(width: 17, height: 17).background(Circle().fill(Palette.accent.opacity(0.14)))
+            Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

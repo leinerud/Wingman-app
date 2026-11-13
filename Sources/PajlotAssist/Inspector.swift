@@ -7,7 +7,7 @@ import SwiftUI
 
 enum Git {
     /// Real git binaries are preferred over /usr/bin/git, which is a shim that can't run inside the sandbox.
-    nonisolated static let executable: String? = [
+    nonisolated static let executable: String? = ProcessInfo.processInfo.environment["PAJLOT_NO_GIT"] != nil ? nil : [
         "/Applications/Xcode.app/Contents/Developer/usr/bin/git",
         "/Library/Developer/CommandLineTools/usr/bin/git",
         "/opt/homebrew/bin/git",
@@ -128,8 +128,9 @@ struct InspectorData {
     var isRepo = true
     /// The sandbox hasn't been given this project folder yet.
     var needsAccess = false
-    /// Git couldn't be started at all (so "not a repository" would be the wrong message).
-    var gitMissing = false
+    /// Git can't be started here (e.g. inside the sandbox), so this is a simpler view: recently edited files and
+    /// the commit history read straight from the repository, but no before/after values.
+    var basicMode = false
     var branch: String?
     var scope: InspectScope = .working
     var changes: [ScreenChange] = []
@@ -464,7 +465,7 @@ enum Inspector {
     nonisolated static func inspect(cwd: String, scope: InspectScope) -> InspectorData {
         var data = InspectorData(scope: scope)
         guard Access.canRead(cwd) else { data.needsAccess = true; data.isRepo = false; return data }
-        guard Git.run(["--version"], cwd: cwd) != nil else { data.gitMissing = true; data.isRepo = false; return data }
+        guard Git.run(["--version"], cwd: cwd) != nil else { return basic(cwd: cwd, data: data) }
         guard Git.run(["rev-parse", "--is-inside-work-tree"], cwd: cwd) != nil else { data.isRepo = false; return data }
 
         data.branch = Git.run(["rev-parse", "--abbrev-ref", "HEAD"], cwd: cwd)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -525,6 +526,72 @@ enum Inspector {
         let tokens = TokenGuard.loadTokens(cwd: cwd)
         data.hasTokenFile = !tokens.files.isEmpty
         data.findings = TokenGuard.check(files: files, tokens: tokens)
+        return data
+    }
+}
+
+// MARK: - Basic mode (no git available)
+
+extension Inspector {
+    private static let skipDirs: Set<String> = ["node_modules", "build", "dist", "DerivedData", ".build", "Pods", "vendor", "target", "out", "coverage"]
+
+    /// Reads what it can from the files themselves: recently edited files, and the commit list from `.git/logs/HEAD`.
+    nonisolated static func basic(cwd: String, data input: InspectorData) -> InspectorData {
+        var data = input
+        data.basicMode = true
+        data.isRepo = true
+
+        if let head = try? String(contentsOfFile: cwd + "/.git/HEAD", encoding: .utf8), head.hasPrefix("ref: refs/heads/") {
+            data.branch = head.dropFirst("ref: refs/heads/".count).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Reflog lines: "<old> <new> Name <email> <time> <zone>\t<message>"
+        if let log = try? String(contentsOfFile: cwd + "/.git/logs/HEAD", encoding: .utf8) {
+            var seen = Set<String>()
+            for row in log.split(separator: "\n").reversed() {
+                let halves = row.split(separator: "\t", maxSplits: 1).map(String.init)
+                guard halves.count == 2 else { continue }
+                let left = halves[0].split(separator: " ").map(String.init)
+                guard left.count >= 5, let t = TimeInterval(left[left.count - 2]) else { continue }
+                let sha = left[1]
+                guard seen.insert(sha).inserted else { continue }
+                var subject = halves[1]
+                for prefix in ["commit: ", "commit (initial): ", "commit (merge): ", "merge ", "rebase (finish): "] where subject.hasPrefix(prefix) {
+                    subject = String(subject.dropFirst(prefix.count)); break
+                }
+                data.commits.append(CommitEntry(sha: sha, date: Date(timeIntervalSince1970: t), subject: subject))
+                if data.commits.count >= 40 { break }
+            }
+        }
+
+        // Files edited in the last three hours stand in for "what this session changed".
+        let cutoff = Date().addingTimeInterval(-3 * 3600)
+        var files: [DiffFile] = []
+        let root = URL(fileURLWithPath: cwd)
+        if let en = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
+                                                   options: [.skipsHiddenFiles, .skipsPackageDescendants]) {
+            for case let url as URL in en {
+                let vals = try? url.resourceValues(forKeys: [.contentModificationDateKey, .isDirectoryKey])
+                if vals?.isDirectory == true {
+                    if skipDirs.contains(url.lastPathComponent) { en.skipDescendants() }
+                    continue
+                }
+                guard let m = vals?.contentModificationDate, m > cutoff else { continue }
+                files.append(DiffFile(path: String(url.path.dropFirst(root.path.count + 1))))
+                if files.count >= 300 { break }
+            }
+        }
+        data.dirtyFiles = files.count
+
+        var groups: [String: ScreenChange] = [:]
+        for f in files {
+            let kind = Classify.kind(of: f.path)
+            let name = kind == .asset ? "Images and assets" : kind == .config ? "Project settings" : kind == .logic ? "Behind the scenes" : Classify.humanName(of: f.path)
+            var g = groups[name + kind.rawValue] ?? ScreenChange(name: name, kind: kind, files: [], added: 0, removed: 0, changes: [], isNew: false, isDeleted: false)
+            g.files.append(f.path)
+            groups[name + kind.rawValue] = g
+        }
+        data.changes = groups.values.sorted { ($0.kind.rank, $1.files.count) < ($1.kind.rank, $0.files.count) }
         return data
     }
 }
