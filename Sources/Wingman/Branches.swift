@@ -178,6 +178,9 @@ enum BranchLoader {
                 for lb in local.branches {
                     var b = branches[lb.name] ?? BranchRow(repo: name, name: lb.name)
                     if b.existsLocally == true, b.upstream != nil { continue }
+                    // The folder git actually found the branch in. Copilot's session folder is often a temporary
+                    // worktree that has since been deleted, so it can't be used for actions on the branch.
+                    if b.existsLocally != true { b.folder = folder }
                     b.existsLocally = true
                     if local.basic { b.upstreamKnown = false }
                     b.upstream = lb.upstream ?? b.upstream
@@ -365,6 +368,7 @@ struct BranchesWindow: View {
     @State private var cleanup: CleanupRequest?
     @State private var lastRemoval: [RemovedBranch] = []
     @AppStorage("branches.introDismissed") private var introDismissed = false
+    @Namespace private var filterNS
 
     enum BranchFilter: String, CaseIterable, Identifiable {
         case working = "In progress", closeable = "Ready to close", all = "All"
@@ -406,9 +410,7 @@ struct BranchesWindow: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            toolbar
-            filterBar
-            Divider().opacity(0.5)
+            header
             if !Access.hasCopilotAccess && !model.loadedOnce {
                 EmptyNote(symbol: "lock", title: "Allow access to your sessions first", message: "Branches come from your Copilot sessions. Allow the .copilot folder in Settings or the main window.")
             } else if !model.loadedOnce {
@@ -417,7 +419,7 @@ struct BranchesWindow: View {
                 EmptyNote(symbol: "arrow.triangle.branch", title: "No branches to show", message: query.isEmpty ? "Nothing matches the current filters." : "Nothing matches “\(query)”.")
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 16, pinnedViews: []) {
+                    LazyVStack(alignment: .leading, spacing: 28, pinnedViews: []) {
                         if !introDismissed { BranchIntro { withAnimation { introDismissed = true } } }
                         ForEach(shown, id: \.repo.id) { item in
                             RepoSection(repo: item.repo, rows: item.rows, reload: model.refresh) { rows in
@@ -425,13 +427,14 @@ struct BranchesWindow: View {
                             }
                         }
                     }
-                    .padding(18)
+                    .padding(.horizontal, 24).padding(.top, 4).padding(.bottom, 28)
                 }
             }
         }
         .frame(minWidth: 560, minHeight: 440)
         .background(Palette.canvas)
-        .navigationTitle("Branches")
+        .searchable(text: $query, placement: .toolbar, prompt: "Search repos and branches")
+        .toolbar { toolbarItems }
         .onAppear { model.refresh() }
         .onChange(of: store.sessions.first?.updatedAt) { _, _ in model.refresh() }
         .sheet(item: $cleanup) { req in
@@ -463,27 +466,31 @@ struct BranchesWindow: View {
         }
     }
 
-    private var toolbar: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Branches").font(.system(size: 15, weight: .semibold))
-                Text(summary).font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 12)
-            TextField("Search repos and branches", text: $query)
-                .textFieldStyle(.roundedBorder).font(.system(size: 12)).frame(width: 190)
-            Toggle("Hide main", isOn: $hideMain).toggleStyle(.switch).controlSize(.mini)
-                .help("Hide the main version itself and Copilot's temporary branches, unless they have unsaved work")
-            Button { showGlossary.toggle() } label: {
-                Image(systemName: "questionmark.circle").font(.system(size: 13)).foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("What do branches, main and merged mean?")
-            .accessibilityLabel("Explain the words in this window")
-            .popover(isPresented: $showGlossary, arrowEdge: .bottom) { BranchGlossary().padding(16).frame(width: 340) }
-            IconButton(symbol: "arrow.clockwise", help: "Reload", shortcut: "r") { model.refresh() }
+    /// Count line and the three filters, sitting directly on the window background.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(summary).font(.system(size: 12)).foregroundStyle(.secondary)
+            filterBar
         }
-        .padding(.horizontal, 18).padding(.vertical, 12)
+        .padding(.horizontal, 24).padding(.top, 6).padding(.bottom, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ToolbarContentBuilder private var toolbarItems: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Menu {
+                Toggle("Hide main and temporary branches", isOn: $hideMain)
+            } label: {
+                Label("View options", systemImage: "line.3.horizontal.decrease")
+            }
+            .help("Hide the main version itself and Copilot's temporary branches, unless they have unsaved work")
+            Button { showGlossary.toggle() } label: { Label("What do these words mean?", systemImage: "questionmark.circle") }
+                .help("What do branches, main and merged mean?")
+                .popover(isPresented: $showGlossary, arrowEdge: .bottom) { BranchGlossary().padding(16).frame(width: 340) }
+            Button { model.refresh() } label: { Label("Reload", systemImage: "arrow.clockwise") }
+                .keyboardShortcut("r")
+                .help("Reload")
+        }
     }
 
     private func undo() {
@@ -504,22 +511,27 @@ struct BranchesWindow: View {
     /// The three questions you actually have: what am I working on, what can go, and everything.
     private var filterBar: some View {
         let n = counts
-        return HStack(spacing: 8) {
+        return HStack(spacing: 2) {
             ForEach(BranchFilter.allCases) { f in
                 let on = f == filter
                 let count = f == .working ? n.working : f == .closeable ? n.closeable : n.all
-                let tint: Color = f == .working ? Palette.working : f == .closeable ? Palette.ready : Palette.accent
-                Button { withAnimation(.snappy(duration: 0.2)) { filterRaw = f.rawValue } } label: {
+                let tint: Color = f == .working ? Palette.working : f == .closeable ? Palette.ready : Palette.muted
+                Button { withAnimation(.snappy(duration: 0.22)) { filterRaw = f.rawValue } } label: {
                     HStack(spacing: 6) {
-                        Circle().fill(f == .all ? Palette.muted : tint).frame(width: 7, height: 7)
+                        Circle().fill(tint).frame(width: 6, height: 6)
                         Text(f.rawValue)
-                        Text("\(count)").monospacedDigit().foregroundStyle(on ? tint : .secondary)
+                        Text("\(count)").monospacedDigit().foregroundStyle(.tertiary)
                     }
                     .font(.system(size: 12, weight: on ? .semibold : .medium))
                     .foregroundStyle(on ? .primary : .secondary)
-                    .padding(.horizontal, 12).frame(height: 28)
-                    .background(Capsule().fill(on ? tint.opacity(0.15) : Palette.well))
-                    .overlay(Capsule().strokeBorder(on ? tint.opacity(0.6) : .clear, lineWidth: 1))
+                    .padding(.horizontal, 12).frame(height: 26)
+                    .background {
+                        if on {
+                            Capsule().fill(Palette.card)
+                                .shadow(color: .black.opacity(0.10), radius: 2, y: 1)
+                                .matchedGeometryEffect(id: "filter", in: filterNS)
+                        }
+                    }
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -528,9 +540,9 @@ struct BranchesWindow: View {
                       : "Everything Copilot has worked on")
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
-            Spacer()
         }
-        .padding(.horizontal, 18).padding(.bottom, 10)
+        .padding(3)
+        .background(Capsule().fill(Palette.well))
     }
 
     private var summary: String {
@@ -568,10 +580,14 @@ private struct RepoSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "shippingbox").font(.system(size: 11)).foregroundStyle(.secondary)
-                Text(repo.name).font(.system(size: 12.5, weight: .semibold))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                let parts = repo.name.split(separator: "/", maxSplits: 1).map(String.init)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(parts.last ?? repo.name).font(.system(size: 15, weight: .semibold)).tracking(-0.2)
+                    if parts.count == 2 { Text(parts[0]).font(.system(size: 12)).foregroundStyle(.tertiary) }
+                }
+                .lineLimit(1)
                 Spacer()
                 if repo.needsAccess, let f = repo.folders.first(where: { !Access.canRead($0) }) {
                     Button("Show local details…") { if Access.requestProjectFolder(for: f) { reload() } }
@@ -621,8 +637,8 @@ private struct RepoSection: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Circle().fill(tint).frame(width: 6, height: 6)
-                Text(title.uppercased()).font(.system(size: 10, weight: .bold)).tracking(0.6).foregroundStyle(tint)
-                Text("\(list.count)").font(.system(size: 10, weight: .medium).monospacedDigit()).foregroundStyle(.tertiary)
+                Text(title).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.secondary)
+                Text("\(list.count)").font(.system(size: 11.5, weight: .medium).monospacedDigit()).foregroundStyle(.tertiary)
                 if title == "Paused" {
                     Text("Each has a suggested next step").font(.system(size: 10.5)).foregroundStyle(.tertiary)
                     Image(systemName: "questionmark.circle").font(.system(size: 10)).foregroundStyle(.tertiary)
@@ -639,12 +655,13 @@ private struct RepoSection: View {
             VStack(spacing: 0) {
                 ForEach(Array(list.enumerated()), id: \.element.id) { i, b in
                     BranchLine(row: b, gitOK: gitOK, repoNeedsAccess: repo.needsAccess, remove: { cleanup([b]) }, allowFolder: allowFolder)
-                    if i < list.count - 1 { Divider().opacity(0.4) }
+                    if i < list.count - 1 { Divider().opacity(0.35).padding(.leading, 46) }
                 }
             }
-            .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.card))
-            .overlay(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).strokeBorder(tint.opacity(title == "Paused" ? 0 : 0.35)))
-            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Palette.card))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Palette.hairline))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
         }
     }
 }
@@ -681,6 +698,10 @@ private struct BranchLine: View {
 
     // MARK: Actions (the same list is used by the ⋯ menu and by right-click)
 
+    /// The Copilot session that worked on this branch (its folder), else just the app.
+    private func openInCopilot() {
+        SessionActions.openCopilot(workspace: row.folder, branch: row.name)
+    }
     private func openApp(_ bundleID: String) {
         guard let dir = folderURL, let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
         NSWorkspace.shared.open([dir], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
@@ -706,7 +727,7 @@ private struct BranchLine: View {
         Divider()
         Button { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } } label: { Label("Show project folder in Finder", systemImage: "folder") }
             .disabled(folderURL == nil)
-        Button { openApp("com.github.githubapp") } label: { Label("Open project in GitHub Copilot", systemImage: "sparkles") }
+        Button { openInCopilot() } label: { Label("Open in GitHub Copilot", systemImage: "sparkles") }
             .disabled(folderURL == nil || NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.github.githubapp") == nil)
         Button { openApp("com.microsoft.VSCode") } label: { Label("Open in VS Code", systemImage: "chevron.left.forwardslash.chevron.right") }
             .disabled(folderURL == nil || NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.VSCode") == nil)
@@ -730,16 +751,15 @@ private struct BranchLine: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
         HStack(spacing: 10) {
-            Image(systemName: "arrow.triangle.branch")
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(row.isCurrent ? Palette.working : Palette.muted).frame(width: 16)
+            let statusTint: Color = row.working ? Palette.working : row.closeable ? Palette.ready : Palette.muted
+            Image(systemName: row.closeable ? "checkmark" : "arrow.triangle.branch")
+                .font(.system(size: 11, weight: .semibold)).foregroundStyle(statusTint)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(statusTint.opacity(0.12)))
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(row.name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(row.closeable ? .secondary : .primary).lineLimit(1).truncationMode(.middle)
-                    if row.working { filledChip("In progress", Palette.working, "You have unsaved changes here, a Copilot session is working on it, it is open on your Mac, or it was touched in the last 7 days") }
-                    if row.closeable {
-                        if row.merged == true { filledChip("Done · safe to close", Palette.ready, "Everything on this branch has already been added to the main version. The separate copy can be closed.") }
-                        else { filledChip("Done · removed on GitHub", Palette.ready, "This branch was removed on GitHub, which usually means the work was reviewed and added to the main version. The app can't prove it, so check before removing it from your Mac.") }
-                    }
+                    Text(row.name).font(.system(size: 13, weight: .medium)).foregroundStyle(row.closeable ? .secondary : .primary).lineLimit(1).truncationMode(.middle)
+                    if row.closeable, row.merged != true { chip("Removed on GitHub", Palette.ready, "This branch was removed on GitHub, which usually means the work was reviewed and added to the main version. The app can't prove it, so check before removing it from your Mac.") }
                     if row.isCurrent { chip("Open on your Mac", Palette.working, "This is the version currently open in the project folder on your Mac") }
                     if let a = row.ahead, a > 0, !row.closeable { chip(a == 1 ? "1 change not in main yet" : "\(a) changes not in main yet", Palette.muted, "\(a) saved changes on this branch haven't been added to the main (finished) version yet") }
                     if row.dirty > 0 { chip(row.dirty == 1 ? "1 unsaved file" : "\(row.dirty) unsaved files", Palette.attention, "\(row.dirty) files have edits that aren't saved as a version yet. They exist only on your Mac.") }
@@ -785,16 +805,13 @@ private struct BranchLine: View {
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 26, height: 26)
                 .help("More actions: review requests, compare with main, open in GitHub Copilot, VS Code or Terminal, copy commands. Right-click the row for the same menu.")
-            }.opacity(hover ? 1 : 0.45)
+            }.opacity(hover ? 1 : 0)
         }
         adviceBox
         }
-        .padding(.horizontal, 12).padding(.vertical, 9)
-        .padding(.leading, 3)
-        .background(Palette.well.opacity(hover ? 0.5 : 0))
-        .overlay(alignment: .leading) {
-            if row.working || row.closeable { Rectangle().fill(row.working ? Palette.working : Palette.ready).frame(width: 3) }
-        }
+        .padding(.horizontal, 12).padding(.vertical, 11)
+        .background(Palette.well.opacity(hover ? 0.45 : 0))
+        .animation(.easeOut(duration: 0.15), value: hover)
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .contextMenu { actions }
@@ -836,7 +853,7 @@ private struct BranchLine: View {
         switch a {
         case .openPR(let n): if let u = github("/pull/\(n)") { Links.open(u) }
         case .compare: if let u = compareURL { Links.open(u) }
-        case .openCopilot: openApp("com.github.githubapp")
+        case .openCopilot: openInCopilot()
         case .remove: remove()
         case .allowFolder: allowFolder()
         }
@@ -861,8 +878,8 @@ private struct BranchLine: View {
                 }
             }
             .padding(10)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(c.opacity(0.09)))
-            .padding(.leading, 26)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(c.opacity(0.07)))
+            .padding(.leading, 34)
             .accessibilityElement(children: .combine)
         }
     }
@@ -885,15 +902,9 @@ private struct BranchLine: View {
         }
     }
 
-    private func filledChip(_ text: String, _ tint: Color, _ help: String) -> some View {
-        Text(text).font(.system(size: 9.5, weight: .bold)).foregroundStyle(.white)
-            .padding(.horizontal, 7).frame(height: 17).background(Capsule().fill(tint))
-            .help(help)
-    }
-
     private func chip(_ text: String, _ tint: Color, _ help: String) -> some View {
-        Text(text).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(tint)
-            .padding(.horizontal, 6).frame(height: 16).background(Capsule().fill(tint.opacity(0.13)))
+        Text(text).font(.system(size: 10.5, weight: .medium)).foregroundStyle(tint)
+            .padding(.horizontal, 7).frame(height: 18).background(Capsule().fill(tint.opacity(0.10)))
             .help(help)
     }
 }
@@ -966,6 +977,8 @@ struct RemovedBranch: Codable, Hashable, Identifiable {
 struct RemoveOutcome {
     var removed: [RemovedBranch] = []
     var failed: [(name: String, reason: String)] = []
+    /// Branch name -> folder of the other workspace that has it open, when git says so.
+    var workspaces: [String: String] = [:]
 }
 
 /// Removing finished branches. Only ever deletes the local copy on this Mac, never anything on GitHub.
@@ -997,12 +1010,19 @@ enum BranchCleanup {
             // Remember where the branch pointed so it can be restored.
             let sha = Git.runResult(["rev-parse", "--verify", "refs/heads/" + row.name], cwd: folder)
             guard sha.ok else { out.failed.append((row.name, plain(sha.err))); continue }
-            let res = Git.runResult(["branch", force ? "-D" : "-d", "--", row.name], cwd: folder)
+            // `git branch -d` checks against the local main (or HEAD), which is often behind GitHub's main. Check
+            // against the same main the app used, and only then delete without git's own check.
+            var confirmed = false
+            if !force, let base = row.defaultName {
+                confirmed = Git.runResult(["merge-base", "--is-ancestor", "refs/heads/" + row.name, base], cwd: folder).ok
+            }
+            let res = Git.runResult(["branch", force || confirmed ? "-D" : "-d", "--", row.name], cwd: folder)
             if res.ok {
                 out.removed.append(RemovedBranch(repo: row.repo, name: row.name, folder: folder,
                                                  sha: sha.out.trimmingCharacters(in: .whitespacesAndNewlines), date: Date()))
             } else {
                 out.failed.append((row.name, plain(res.err)))
+                if let path = workspacePath(res.err) { out.workspaces[row.name] = path }
             }
         }
         record(out.removed)
@@ -1016,6 +1036,17 @@ enum BranchCleanup {
             if res.ok { out.removed.append(b) } else { out.failed.append((b.name, plain(res.err))) }
         }
         return out
+    }
+
+    /// "cannot delete branch 'x' used by worktree at '/path'" (or "checked out at '/path'") -> "/path"
+    nonisolated static func workspacePath(_ err: String) -> String? {
+        for marker in ["used by worktree at '", "checked out at '"] {
+            if let r = err.range(of: marker), let end = err[r.upperBound...].firstIndex(of: "'") {
+                let path = String(err[r.upperBound..<end])
+                return path.isEmpty ? nil : path
+            }
+        }
+        return nil
     }
 
     private nonisolated static func plain(_ err: String) -> String {
@@ -1176,7 +1207,10 @@ struct CleanupSheet: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("These were kept:").font(.system(size: 11.5, weight: .semibold))
                     ForEach(Array(o.failed.enumerated()), id: \.offset) { _, f in
-                        Text("\(f.name): \(f.reason)").font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("\(f.name): \(f.reason)").font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            if let path = o.workspaces[f.name] { WorkspaceLink(path: path) }
+                        }
                     }
                 }
             }
@@ -1185,5 +1219,68 @@ struct CleanupSheet: View {
             }
             HStack { Spacer(); Button("Done") { finish(o) }.buttonStyle(PillButtonStyle(tint: Palette.accent, filled: true)).keyboardShortcut(.defaultAction) }
         }
+    }
+}
+
+/// Where the other workspace is, with ways to get there. Shown when a branch can't be removed because it is open there.
+private struct WorkspaceLink: View {
+    let path: String
+    @State private var copied = false
+
+    private var url: URL { URL(fileURLWithPath: path) }
+    private var exists: Bool { FileManager.default.fileExists(atPath: path) }
+    private var shortPath: String { (path as NSString).abbreviatingWithTildeInPath }
+    private var isCopilot: Bool { path.contains("copilot-worktrees") }
+    private var copilotApp: URL? { NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.github.githubapp") }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "folder.fill").font(.system(size: 13)).foregroundStyle(Palette.working)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(url.lastPathComponent).font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                    Text(shortPath).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                        .help(path).textSelection(.enabled)
+                }
+            }
+            Text(isCopilot
+                 ? "A Copilot workspace still has this branch open. Open it in GitHub Copilot to finish or close that session, then try again."
+                 : "Another folder on your Mac has this branch open. Switch that folder to another branch, then try again.")
+                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if copilotApp != nil {
+                Button { SessionActions.openCopilot(workspace: path) } label: {
+                    Label("Open in GitHub Copilot", systemImage: "sparkles")
+                }
+                .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: isCopilot))
+                .disabled(!exists)
+                .help(exists ? "Opens the Copilot session for this workspace in the GitHub Copilot app" : "This folder no longer exists")
+            }
+            HStack(spacing: 6) {
+                Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: {
+                    Label("Show in Finder", systemImage: "folder")
+                }
+                .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: false))
+                .disabled(!exists)
+                .help(exists ? "Opens the workspace folder in Finder" : "This folder no longer exists")
+                Button { openInTerminal() } label: { Label("Open in Terminal", systemImage: "terminal") }
+                    .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: false))
+                    .disabled(!exists)
+                    .help("Opens a Terminal window in this workspace")
+                Button {
+                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(path, forType: .string)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { copied = false }
+                } label: { Label(copied ? "Copied" : "Copy path", systemImage: copied ? "checkmark" : "doc.on.doc") }
+                    .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: false))
+                    .help("Copies the folder path")
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.well.opacity(0.6)))
+    }
+
+    private func openInTerminal() {
+        guard let terminal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") else { return }
+        NSWorkspace.shared.open([url], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration())
     }
 }

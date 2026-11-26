@@ -27,7 +27,7 @@ enum Palette {
 enum Metrics {
     static let width: CGFloat = 384
     static let gutter: CGFloat = 14
-    static let cardRadius: CGFloat = 14
+    static let cardRadius: CGFloat = 18
     static let maxListHeight: CGFloat = 540
 }
 
@@ -79,11 +79,13 @@ struct PopoverView: View {
     @State private var listHeight: CGFloat = 0
     @State private var spin = 0.0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     /// In the Dock window the view stretches to whatever size the user drags the window to;
     /// in the menu bar popover it keeps its compact, content-sized shape.
     var resizable = false
+    /// In the Dock window the branch button switches to the Branches tab instead of opening a separate window.
+    var showBranches: (() -> Void)? = nil
+    private var gutter: CGFloat { resizable ? 24 : Metrics.gutter }
 
     enum Filter: String, CaseIterable, Identifiable {
         case active = "Now", recent = "All"
@@ -138,25 +140,36 @@ struct PopoverView: View {
 
     // MARK: Header
 
-    private var header: some View {
-        HStack(spacing: 11) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Sessions")
-                    .font(.system(size: 14, weight: .semibold))
-                    .help("Each item is one chat you've started (a “session”).")
-                Text(summaryLine)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .contentTransition(.opacity)
+    @ViewBuilder private var header: some View {
+        if resizable {
+            // Main window: same layout as the Branches tab, summary line then the filter.
+            VStack(alignment: .leading, spacing: 12) {
+                Text(summaryLine).font(.system(size: 12)).foregroundStyle(.secondary).contentTransition(.opacity)
+                FilterControl(selection: $filter, counts: [.active: nowSessions.count, .recent: store.sessions.count])
+                    .help("Now: work in progress or waiting for you. All: everything, including finished work.")
             }
-            Spacer(minLength: 8)
-            FilterControl(selection: $filter, counts: [.active: nowSessions.count, .recent: store.sessions.count])
-                .help("Now: work in progress or waiting for you. All: everything, including finished work.")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, gutter).padding(.top, 6).padding(.bottom, 16)
+        } else {
+            HStack(spacing: 11) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Sessions")
+                        .font(.system(size: 14, weight: .semibold))
+                        .help("Each item is one chat you've started (a “session”).")
+                    Text(summaryLine)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .contentTransition(.opacity)
+                }
+                Spacer(minLength: 8)
+                FilterControl(selection: $filter, counts: [.active: nowSessions.count, .recent: store.sessions.count])
+                    .help("Now: work in progress or waiting for you. All: everything, including finished work.")
+            }
+            .padding(.horizontal, Metrics.gutter)
+            .padding(.top, 14)
+            .padding(.bottom, 12)
         }
-        .padding(.horizontal, Metrics.gutter)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
     }
 
     private var summaryLine: String {
@@ -174,17 +187,17 @@ struct PopoverView: View {
 
     private var list: some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: resizable ? 28 : 20) {
                 ForEach(sections) { section in
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 10) {
                         SectionHeader(title: section.title, tint: section.tint, count: section.items.count, symbol: section.id == "pinned" ? "pin.fill" : nil)
                         ForEach(section.items) { SessionCard(session: $0).transition(.opacity.combined(with: .scale(scale: 0.97))) }
                     }
                 }
             }
-            .padding(.horizontal, Metrics.gutter)
+            .padding(.horizontal, gutter)
             .padding(.top, 2)
-            .padding(.bottom, Metrics.gutter)
+            .padding(.bottom, gutter)
             .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { h in
                 // Grow/shrink together with the cards (e.g. when steps open), but size instantly on first show.
                 if listHeight == 0 { listHeight = h } else { withAnimation(.snappy(duration: 0.3)) { listHeight = h } }
@@ -277,13 +290,19 @@ struct PopoverView: View {
                 withAnimation(.easeInOut(duration: 0.6)) { spin += 360 }
                 store.refresh()
             }
-            IconButton(symbol: "arrow.triangle.branch", help: "Branches in all your Copilot repositories", shortcut: "b") {
-                openWindow(id: BranchesWindowID.id)
-                NSApp.activate()
+            if showBranches == nil {   // the main window has the Sessions / Branches switch instead
+                IconButton(symbol: "arrow.triangle.branch", help: "Branches in all your Copilot repositories", shortcut: "b") {
+                    if let showBranches { showBranches() } else {
+                        // From the menu bar: open the main window on its Branches tab.
+                        UserDefaults.standard.set(MainWindowView.Tab.branches.rawValue, forKey: MainWindow.tabKey)
+                        openWindow(id: MainWindow.id)
+                        NSApp.activate()
+                    }
+                }
             }
             IconButton(symbol: "gearshape", help: "Settings: Dock, menu bar and desktop widget", shortcut: ",") {
+                openWindow(id: SettingsWindowID.id)
                 NSApp.activate()
-                openSettings()
             }
             IconButton(symbol: "power", help: "Close this helper (your sessions keep running)", shortcut: "q") {
                 NSApplication.shared.terminate(nil)
@@ -292,8 +311,9 @@ struct PopoverView: View {
         .padding(.leading, 8)
         .padding(.trailing, 8)
         .frame(height: 40)
-        .background(Palette.well.opacity(0.5))
-        .overlay(alignment: .top) { Rectangle().fill(Palette.hairline).frame(height: 1) }
+        .padding(.horizontal, resizable ? 12 : 0)
+        .background(Palette.well.opacity(resizable ? 0 : 0.5))
+        .overlay(alignment: .top) { Rectangle().fill(Palette.hairline).frame(height: 1).opacity(resizable ? 0.6 : 1) }
     }
 }
 
@@ -391,19 +411,11 @@ struct SessionCard: View {
                 .padding(.top, 2)
             }
         }
-        .padding(.vertical, 12)
-        .padding(.leading, session.isActive ? 16 : 14)
-        .padding(.trailing, 14)
+        .padding(14)
         .background(cardBackground)
-        .overlay(alignment: .leading) {
-            if session.isActive {
-                // Straight bar; the card's clipShape below rounds its ends to match the corners.
-                Rectangle().fill(tint).frame(width: 4)
-            }
-        }
         .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
-        .shadow(color: needsYou ? tint.opacity(0.18) : .black.opacity(hovering ? 0.10 : 0.045),
-                radius: hovering ? 10 : 4, y: hovering ? 4 : 1)
+        .shadow(color: needsYou ? tint.opacity(0.16) : .black.opacity(hovering ? 0.08 : 0.04),
+                radius: hovering ? 12 : 8, y: hovering ? 4 : 2)
         .contentShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
         .onTapGesture { SessionActions.openCopilot() }
         .onHover { h in withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { hovering = h } }
@@ -466,7 +478,7 @@ struct SessionCard: View {
         let shape = RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
         return shape
             .fill(Palette.card)
-            .overlay(shape.strokeBorder(needsYou ? tint.opacity(0.45) : Palette.hairline, lineWidth: 1))
+            .overlay(shape.strokeBorder(needsYou ? tint.opacity(0.4) : Palette.hairline, lineWidth: 1))
     }
 
     /// Finished work keeps its steps and final note, so you can look back at what it did.
@@ -567,21 +579,21 @@ struct FilterControl: View {
         HStack(spacing: 2) {
             ForEach(PopoverView.Filter.allCases) { f in
                 let on = f == selection
-                Button { selection = f } label: {
+                Button { withAnimation(.snappy(duration: 0.22)) { selection = f } } label: {
                     HStack(spacing: 4) {
                         Text(f.rawValue)
                         if let c = counts[f], c > 0 {
                             Text("\(c)").monospacedDigit().foregroundStyle(on ? .secondary : .tertiary)
                         }
                     }
-                    .font(.system(size: 11, weight: on ? .semibold : .medium))
+                    .font(.system(size: 12, weight: on ? .semibold : .medium))
                     .foregroundStyle(on ? .primary : .secondary)
-                    .padding(.horizontal, 10)
-                    .frame(height: 22)
+                    .padding(.horizontal, 12)
+                    .frame(height: 26)
                     .background {
                         if on {
                             Capsule().fill(Palette.card)
-                                .shadow(color: .black.opacity(0.12), radius: 1.5, y: 0.5)
+                                .shadow(color: .black.opacity(0.10), radius: 2, y: 1)
                                 .matchedGeometryEffect(id: "selection", in: ns)
                         }
                     }
@@ -590,7 +602,7 @@ struct FilterControl: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(2)
+        .padding(3)
         .background(Capsule().fill(Palette.well))
     }
 }
@@ -603,13 +615,12 @@ struct SectionHeader: View {
     var body: some View {
         HStack(spacing: 6) {
             if let symbol { Image(systemName: symbol).font(.system(size: 8, weight: .bold)).foregroundStyle(tint) }
-            else { Circle().fill(tint).frame(width: 5, height: 5) }
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(0.7)
+            else { Circle().fill(tint).frame(width: 6, height: 6) }
+            Text(title)
+                .font(.system(size: 11.5, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text("\(count)")
-                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                .font(.system(size: 11.5, weight: .medium).monospacedDigit())
                 .foregroundStyle(.tertiary)
             Spacer()
         }

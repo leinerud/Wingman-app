@@ -224,11 +224,9 @@ enum Links {
 
     /// Every installed app that can open web pages.
     static func installed() -> [Browser] {
-        let ids = (LSCopyAllHandlersForURLScheme("https" as CFString)?.takeRetainedValue() as? [String]) ?? []
         var seen = Set<String>(), out: [Browser] = []
-        for id in ids {
-            let key = id.lowercased()
-            guard seen.insert(key).inserted, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { continue }
+        for url in NSWorkspace.shared.urlsForApplications(toOpen: probe) {
+            guard let id = Bundle(url: url)?.bundleIdentifier, seen.insert(id.lowercased()).inserted else { continue }
             out.append(Browser(id: id, name: FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""), url: url))
         }
         return out.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }

@@ -9,13 +9,14 @@ struct WingmanApp: App {
     @AppStorage(Prefs.menuBar) private var showInMenuBar = true
 
     var body: some Scene {
-        // The Dock window: the same view as the menu bar popover, in a regular window.
+        // The main window: Sessions and Branches, switched at the top. Opens from the Dock or the menu bar panel.
         // It opens at launch only for Dock users who are past the welcome screen.
         Window("Wingman", id: MainWindow.id) {
-            PopoverView(resizable: true).environmentObject(store).registersWindowOpener()
+            MainWindowView().environmentObject(store).registersWindowOpener()
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: Metrics.width, height: 520)
+        .windowToolbarStyle(.unified)
+        .defaultSize(width: 720, height: 640)
         .defaultPosition(.topTrailing)
         .defaultLaunchBehavior(Prefs.hasSeenWelcome && Prefs.showInDock ? .presented : .suppressed)
 
@@ -28,13 +29,6 @@ struct WingmanApp: App {
         .defaultPosition(.center)
         .defaultLaunchBehavior(Prefs.hasSeenWelcome ? .suppressed : .presented)
 
-        // Every repository and branch your Copilot sessions have used.
-        Window("Branches", id: BranchesWindowID.id) {
-            BranchesWindow().environmentObject(store)
-        }
-        .defaultSize(width: 640, height: 560)
-        .defaultLaunchBehavior(.suppressed)
-
         // "Review": what a session changed on screen, token check, timeline and live preview.
         WindowGroup("Review", id: InspectorWindowID.id, for: String.self) { $sessionID in
             InspectorWindow(sessionID: sessionID ?? "").environmentObject(store)
@@ -44,6 +38,15 @@ struct WingmanApp: App {
         Settings {
             SettingsView()
         }
+
+        // The same settings as a regular window. SwiftUI's openSettings() often does nothing when called from the
+        // menu bar panel while the app has no Dock icon, so the gear button opens this one instead.
+        Window("Wingman Settings", id: SettingsWindowID.id) {
+            SettingsView()
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+        .defaultLaunchBehavior(.suppressed)
 
         MenuBarExtra(isInserted: $showInMenuBar) {
             PopoverView().environmentObject(store)
@@ -55,10 +58,45 @@ struct WingmanApp: App {
 }
 
 enum InspectorWindowID { static let id = "inspector" }
-enum BranchesWindowID { static let id = "branches" }
+enum SettingsWindowID { static let id = "settings" }
+
+/// The main window: Sessions and Branches, switched with a segmented control at the top.
+struct MainWindowView: View {
+    enum Tab: String, CaseIterable, Identifiable {
+        case sessions = "Sessions", branches = "Branches"
+        var id: Self { self }
+    }
+    @AppStorage(MainWindow.tabKey) private var tab: Tab = .sessions
+
+    var body: some View {
+        Group {
+            switch tab {
+            case .sessions: PopoverView(resizable: true, showBranches: { tab = .branches })
+            case .branches: BranchesWindow()
+            }
+        }
+        .navigationTitle(tab.rawValue)
+        .toolbar(removing: .title)
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        .toolbar {
+            // A native toolbar control, so it picks up the system look (Liquid Glass on macOS 26). Pinned to the
+            // leading edge: a centred item moves when the Branches tab adds its search and buttons on the right.
+            ToolbarItem(placement: .navigation) {
+                Picker("View", selection: $tab) {
+                    ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .help("Switch between your sessions and the branches they used")
+            }
+        }
+    }
+}
 
 enum MainWindow {
     static let id = "main"
+    static let tabKey = "main.tab"
     /// Set by whichever SwiftUI view is alive, so AppKit callbacks (Dock clicks) can open the window.
     @MainActor static var open: (() -> Void)?
 }
