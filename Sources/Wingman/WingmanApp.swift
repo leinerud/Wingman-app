@@ -21,6 +21,7 @@ struct WingmanApp: App {
         .defaultPosition(.topTrailing)
         .defaultLaunchBehavior(Prefs.hasSeenWelcome && Prefs.showInDock ? .presented : .suppressed)
         .commands {
+            UpdateCommands()
             CommandGroup(after: .help) {
                 Button("Send Feedback…") { Feedback.open() }
             }
@@ -131,6 +132,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Prefs.registerDefaults()
         Prefs.applyDockPolicy()
     }
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        MainActor.assumeIsolated { Updates.shared.start() }
+    }
     /// Clicking the Dock icon (or the desktop widget) brings the window back if it was closed.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows { MainActor.assumeIsolated { MainWindow.open?() } }
@@ -158,7 +162,7 @@ struct MenuBarLabel: View {
             if store.activeCount > 0 { Text("\(store.activeCount)") }
         }
         .help(store.activeCount == 0 ? "Wingman: nothing running" : "Wingman: \(store.activeCount) \(store.activeCount == 1 ? "session" : "sessions") active")
-        .onAppear { animator.set(mode); Demo.openPanel() }
+        .onAppear { animator.set(mode) }
         .registersWindowOpener()
         .onChange(of: mode) { _, new in animator.set(new) }
         .onReceive(timer) { _ in

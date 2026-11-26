@@ -11,6 +11,11 @@
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
 <key>ITSAppUsesNonExemptEncryption</key><false/>
+<key>SUFeedURL</key><string>https://leinerud.se/wingman/appcast.xml</string>
+<key>SUPublicEDKey</key><string>3LpSZia2NHWnES1ZmTmcJej1Tw8jgQaDvE9ll2qUUdY=</string>
+<key>SUEnableAutomaticChecks</key><true/>
+<key>SUAutomaticallyUpdate</key><true/>
+<key>SUEnableInstallerLauncherService</key><true/>
 <key>NSHumanReadableCopyright</key><string>© Daniel Leinerud</string>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
