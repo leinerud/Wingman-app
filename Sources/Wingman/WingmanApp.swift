@@ -183,7 +183,7 @@ struct MenuBarLabel: View {
             if store.activeCount > 0 { Text("\(store.activeCount)") }
         }
         .help(store.activeCount == 0 ? "Wingman: nothing running" : "Wingman: \(store.activeCount) \(store.activeCount == 1 ? "session" : "sessions") active")
-        .onAppear { animator.set(mode) }
+        .onAppear { animator.set(mode); Demo.openPanel(store) }
         .registersWindowOpener()
         .onChange(of: mode) { _, new in animator.set(new) }
         .onReceive(timer) { _ in
