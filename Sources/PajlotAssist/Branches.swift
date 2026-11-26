@@ -341,8 +341,10 @@ private struct BranchLine: View {
         Divider()
         Button { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } } label: { Label("Show project folder in Finder", systemImage: "folder") }
             .disabled(folderURL == nil)
-        Button { openApp("com.microsoft.VSCode") } label: { Label("Open in code editor", systemImage: "chevron.left.forwardslash.chevron.right") }
-            .disabled(folderURL == nil)
+        Button { openApp("com.github.githubapp") } label: { Label("Open project in GitHub Copilot", systemImage: "sparkles") }
+            .disabled(folderURL == nil || NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.github.githubapp") == nil)
+        Button { openApp("com.microsoft.VSCode") } label: { Label("Open in VS Code", systemImage: "chevron.left.forwardslash.chevron.right") }
+            .disabled(folderURL == nil || NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.VSCode") == nil)
         Button { openApp("com.apple.Terminal") } label: { Label("Open in Terminal", systemImage: "terminal") }
             .disabled(folderURL == nil)
         Divider()
@@ -385,7 +387,7 @@ private struct BranchLine: View {
                     Image(systemName: "ellipsis").font(.system(size: 11.5, weight: .semibold))
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 26, height: 26)
-                .help("More actions: pull requests, compare, open in editor or Terminal, copy a switch command. Right-click the row for the same menu.")
+                .help("More actions: pull requests, compare, open in GitHub Copilot, VS Code or Terminal, copy a switch command. Right-click the row for the same menu.")
             }.opacity(hover ? 1 : 0.45)
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
