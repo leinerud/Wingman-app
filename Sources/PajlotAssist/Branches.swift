@@ -25,6 +25,8 @@ struct BranchRow: Identifiable, Hashable {
     var sessionActive = false         // a Copilot session is working on it right now
     var onGitHub: Bool?               // is there a branch of this name on GitHub (as of the last fetch)? nil = couldn't tell
     var prs: [Int] = []               // pull requests Copilot opened for this branch (from the session list)
+    var topic: String?                // what the latest session on this branch was about
+    var commits = 0                   // how many changes Copilot saved while working on it (from the session list)
     var folder: String?
 
     var isDefault: Bool { ["main", "master", "develop", "development", "trunk"].contains(name) }
@@ -37,6 +39,68 @@ struct BranchRow: Identifiable, Hashable {
     var touchedRecently: Bool { !isDefault && (lastActive ?? .distantPast) > Date().addingTimeInterval(-7 * 86400) }
     /// What you are actually working on: unsaved changes, a live session, checked out, or touched this week.
     var working: Bool { !closeable && (dirty > 0 || sessionActive || (isCurrent && !isDefault) || touchedRecently) }
+}
+
+/// A suggested next step for a branch, in plain language, for people who don't use git.
+struct Advice {
+    enum Tone { case done, check, decide, nothing, needsInfo }
+    enum Action { case openPR(Int), compare, openCopilot, remove, allowFolder }
+    let tone: Tone
+    let headline: String
+    let detail: String
+    let action: Action?
+    let actionLabel: String?
+}
+
+extension BranchRow {
+    /// What to do about this branch. Nil for branches you are actively working on.
+    func advice(repoNeedsAccess: Bool) -> Advice? {
+        if working { return nil }
+        let removable = BranchCleanup.blocker(self) == nil
+        if closeable {
+            return Advice(tone: .done, headline: "Done. Safe to close.",
+                          detail: "This work is already part of the main version, so the separate copy isn't needed any more.",
+                          action: removable ? .remove : nil, actionLabel: removable ? "Remove from this Mac…" : nil)
+        }
+        if let n = prs.max() {
+            return Advice(tone: .check, headline: "Check pull request #\(n)",
+                          detail: "A pull request is how work gets reviewed and added to main. Open it: if it says “Merged”, this branch can be closed. If it is still open, it is waiting for someone to review it.",
+                          action: .openPR(n), actionLabel: "Open pull request #\(n)")
+        }
+        if existsLocally == false {
+            if commits == 0 {
+                return Advice(tone: .nothing, headline: "Nothing to do",
+                              detail: "Copilot never saved any changes here, and its temporary workspace is gone. There is nothing left to keep.",
+                              action: nil, actionLabel: nil)
+            }
+            if onGitHub == true {
+                return Advice(tone: .decide, headline: "Decide: ask for a review or leave it",
+                              detail: "The work is on GitHub but nobody has been asked to review it. If it should become part of the product, open a pull request.",
+                              action: .compare, actionLabel: "Ask for a review")
+            }
+            return Advice(tone: .nothing, headline: "Probably nothing to keep",
+                          detail: "Copilot saved changes here, but the workspace is gone and, as far as this Mac can tell, they never reached GitHub. If you still want this work, start a new Copilot session and ask for it again.",
+                          action: nil, actionLabel: nil)
+        }
+        if existsLocally == true {
+            if onGitHub == true {
+                return Advice(tone: .decide, headline: "Decide: ask for a review or leave it",
+                              detail: "The work is on GitHub but nobody has been asked to review it. If it should become part of the product, open a pull request.",
+                              action: .compare, actionLabel: "Ask for a review")
+            }
+            if (ahead ?? commits) > 0 {
+                return Advice(tone: .decide, headline: "Decide: finish it or let it go",
+                              detail: "This work only exists on your Mac. To finish it, open it in Copilot and ask it to open a pull request. If you don't need it, remove it.",
+                              action: .openCopilot, actionLabel: "Open in GitHub Copilot")
+            }
+            return Advice(tone: .nothing, headline: "Empty. Safe to remove.",
+                          detail: "Nothing was changed on this branch, so removing it loses nothing.",
+                          action: removable ? .remove : nil, actionLabel: removable ? "Remove from this Mac…" : nil)
+        }
+        return Advice(tone: .needsInfo, headline: repoNeedsAccess ? "Allow the project folder to get advice" : "Not enough information yet",
+                      detail: "To say whether this is finished, the app needs to look at the project folder on your Mac.",
+                      action: repoNeedsAccess ? .allowFolder : nil, actionLabel: repoNeedsAccess ? "Allow folder…" : nil)
+    }
 }
 
 struct RepoBranches: Identifiable, Hashable {
@@ -57,7 +121,7 @@ private struct LocalRepo { var current: String?; var dirty = 0; var branches: [L
 enum BranchLoader {
     nonisolated static func load() -> [RepoBranches] {
         let rows = SQLiteReader.rows(path: Access.copilotPath + "/session-store.db",
-                                     sql: "SELECT repository, branch, cwd, updated_at FROM sessions ORDER BY updated_at DESC")
+                                     sql: "SELECT repository, branch, cwd, summary, updated_at FROM sessions ORDER BY updated_at DESC")
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let plain = DateFormatter(); plain.dateFormat = "yyyy-MM-dd HH:mm:ss"; plain.timeZone = TimeZone(identifier: "UTC")
 
@@ -76,6 +140,7 @@ enum BranchLoader {
                 let when = (r["updated_at"]).flatMap { iso.date(from: $0) ?? plain.date(from: $0) }
                 if let when, when > (b.lastActive ?? .distantPast) { b.lastActive = when }
                 if b.folder == nil, !cwd.isEmpty { b.folder = cwd }
+                if b.topic == nil { b.topic = cleanTopic(r["summary"]) }   // rows are newest first
                 acc.branches[branch] = b
             }
             repos[repo] = acc
@@ -88,6 +153,15 @@ enum BranchLoader {
             JOIN sessions s ON s.id = r.session_id WHERE r.ref_type = 'pr'
             """) {
             if let repo = row["repository"], let b = row["branch"], let n = row["value"].flatMap({ Int($0) }) { prMap[repo + "|" + b, default: []].insert(n) }
+        }
+
+        // How many changes Copilot saved per branch (zero means it never got as far as saving anything).
+        var commitMap: [String: Int] = [:]
+        for row in SQLiteReader.rows(path: Access.copilotPath + "/session-store.db", sql: """
+            SELECT s.repository AS repository, s.branch AS branch, COUNT(DISTINCT r.ref_value) AS n FROM session_refs r
+            JOIN sessions s ON s.id = r.session_id WHERE r.ref_type = 'commit' GROUP BY s.repository, s.branch
+            """) {
+            if let repo = row["repository"], let b = row["branch"], let n = row["n"].flatMap({ Int($0) }) { commitMap[repo + "|" + b] = n }
         }
 
         var out: [RepoBranches] = []
@@ -130,10 +204,22 @@ enum BranchLoader {
             for key in branches.keys where branches[key]?.existsLocally == nil && !needsAccess && !folders.isEmpty {
                 branches[key]?.existsLocally = false
             }
-            for key in Array(branches.keys) { branches[key]?.prs = (prMap[name + "|" + key] ?? []).sorted() }
+            for key in Array(branches.keys) {
+                branches[key]?.prs = (prMap[name + "|" + key] ?? []).sorted()
+                branches[key]?.commits = commitMap[name + "|" + key] ?? 0
+            }
             out.append(RepoBranches(name: name, folders: folders, branches: Array(branches.values), needsAccess: needsAccess, basicLocal: basic))
         }
         return out.sorted { ($0.lastActive ?? .distantPast) > ($1.lastActive ?? .distantPast) }
+    }
+
+    /// "The user asked: “add the A40 asset…”" -> "add the A40 asset…"
+    private nonisolated static func cleanTopic(_ raw: String?) -> String? {
+        guard var t = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        for prefix in ["The user asked: ", "The user wants ", "The user "] where t.hasPrefix(prefix) { t = String(t.dropFirst(prefix.count)); break }
+        t = t.trimmingCharacters(in: CharacterSet(charactersIn: "“”\"' "))
+        t = t.replacingOccurrences(of: "\n", with: " ")
+        return t.count > 140 ? String(t.prefix(140)) + "…" : t
     }
 
     // MARK: Reading a checkout
@@ -462,6 +548,9 @@ private struct RepoSection: View {
     @State private var copied = false
 
     private var gitOK: Bool { !repo.basicLocal }
+    private func allowFolder() {
+        if let f = repo.folders.first(where: { !Access.canRead($0) }), Access.requestProjectFolder(for: f) { reload() }
+    }
     private var removable: [BranchRow] { closeable.filter { BranchCleanup.blocker($0) == nil } }
 
     private var working: [BranchRow] { rows.filter(\.working) }
@@ -535,6 +624,7 @@ private struct RepoSection: View {
                 Text(title.uppercased()).font(.system(size: 10, weight: .bold)).tracking(0.6).foregroundStyle(tint)
                 Text("\(list.count)").font(.system(size: 10, weight: .medium).monospacedDigit()).foregroundStyle(.tertiary)
                 if title == "Paused" {
+                    Text("Each has a suggested next step").font(.system(size: 10.5)).foregroundStyle(.tertiary)
                     Image(systemName: "questionmark.circle").font(.system(size: 10)).foregroundStyle(.tertiary)
                         .help("Nothing has happened here for a week, nothing is unsaved and no Copilot session is using it, and it isn't marked as finished. Old or unfinished work.")
                 }
@@ -548,7 +638,7 @@ private struct RepoSection: View {
             .padding(.leading, 3)
             VStack(spacing: 0) {
                 ForEach(Array(list.enumerated()), id: \.element.id) { i, b in
-                    BranchLine(row: b, gitOK: gitOK) { cleanup([b]) }
+                    BranchLine(row: b, gitOK: gitOK, repoNeedsAccess: repo.needsAccess, remove: { cleanup([b]) }, allowFolder: allowFolder)
                     if i < list.count - 1 { Divider().opacity(0.4) }
                 }
             }
@@ -562,7 +652,9 @@ private struct RepoSection: View {
 private struct BranchLine: View {
     let row: BranchRow
     var gitOK = true
+    var repoNeedsAccess = false
     var remove: () -> Void = {}
+    var allowFolder: () -> Void = {}
     @State private var hover = false
     @State private var copied: String?
 
@@ -636,6 +728,7 @@ private struct BranchLine: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
         HStack(spacing: 10) {
             Image(systemName: "arrow.triangle.branch")
                 .font(.system(size: 11, weight: .medium)).foregroundStyle(row.isCurrent ? Palette.working : Palette.muted).frame(width: 16)
@@ -658,6 +751,10 @@ private struct BranchLine: View {
                     if let n = row.prs.max() { chip("PR #\(n)", Palette.muted, "Copilot opened pull request #\(n) for this branch. Use the ⋯ menu to open it.") }
                     if row.onGitHub == false, row.existsLocally == false { chip("Not on GitHub", Palette.muted, missingOnGitHub) }
                     if row.existsLocally == false { chip("Not on this Mac", Palette.muted, "Copilot worked on this, but it is gone from your project folder. Often a temporary workspace that was cleaned up.") }
+                }
+                if let t = row.topic {
+                    Text(t).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        .help("What the latest Copilot session on this branch was about")
                 }
                 HStack(spacing: 5) {
                     if let c = copied { Text("Copied \(c)").foregroundStyle(Palette.ready) }
@@ -690,6 +787,8 @@ private struct BranchLine: View {
                 .help("More actions: review requests, compare with main, open in GitHub Copilot, VS Code or Terminal, copy commands. Right-click the row for the same menu.")
             }.opacity(hover ? 1 : 0.45)
         }
+        adviceBox
+        }
         .padding(.horizontal, 12).padding(.vertical, 9)
         .padding(.leading, 3)
         .background(Palette.well.opacity(hover ? 0.5 : 0))
@@ -720,6 +819,70 @@ private struct BranchLine: View {
             helps.append("\(b) changes on GitHub aren't on your Mac yet.")
         }
         return parts.isEmpty ? nil : (parts.joined(separator: " · "), helps.joined(separator: " "))
+    }
+
+    // MARK: Suggested next step
+
+    private var advice: Advice? { row.advice(repoNeedsAccess: repoNeedsAccess) }
+
+    private func tint(_ t: Advice.Tone) -> Color {
+        switch t { case .done: Palette.ready; case .check: Palette.working; case .decide: Palette.attention; case .nothing, .needsInfo: Palette.muted }
+    }
+    private func symbol(_ t: Advice.Tone) -> String {
+        switch t { case .done: "checkmark.circle.fill"; case .check: "eye.circle.fill"; case .decide: "questionmark.circle.fill"; case .nothing: "minus.circle.fill"; case .needsInfo: "lock.circle.fill" }
+    }
+
+    private func perform(_ a: Advice.Action) {
+        switch a {
+        case .openPR(let n): if let u = github("/pull/\(n)") { Links.open(u) }
+        case .compare: if let u = compareURL { Links.open(u) }
+        case .openCopilot: openApp("com.github.githubapp")
+        case .remove: remove()
+        case .allowFolder: allowFolder()
+        }
+    }
+
+    /// "What should I do with this?", answered in one sentence with a button that does it.
+    @ViewBuilder private var adviceBox: some View {
+        if let a = advice {
+            let c = tint(a.tone)
+            HStack(alignment: .top, spacing: 9) {
+                Image(systemName: symbol(a.tone)).font(.system(size: 14)).foregroundStyle(c).padding(.top, 1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Suggested: " + a.headline).font(.system(size: 12, weight: .semibold))
+                    Text(a.detail).font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                if let action = a.action, let label = a.actionLabel {
+                    Button { perform(action) } label: { Text(label) }
+                        .buttonStyle(PillButtonStyle(tint: c, filled: false))
+                        .disabled(!enabled(action))
+                        .help(helpText(action))
+                }
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(c.opacity(0.09)))
+            .padding(.leading, 26)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func enabled(_ a: Advice.Action) -> Bool {
+        switch a {
+        case .remove: gitOK && BranchCleanup.blocker(row) == nil
+        case .compare: linkable && compareURL != nil
+        case .openCopilot: folderURL != nil
+        default: true
+        }
+    }
+    private func helpText(_ a: Advice.Action) -> String {
+        switch a {
+        case .openPR: "Opens the pull request on GitHub in your browser"
+        case .compare: "Opens GitHub where you can ask for a review"
+        case .openCopilot: "Opens the project in the GitHub Copilot app"
+        case .remove: gitOK ? "Shows what will be removed first. You can undo." : "Git can't run in this version of the app. Use the ⋯ menu to copy a command instead."
+        case .allowFolder: "Choose the project folder (or a parent folder like “Volvo CE” to cover all projects at once)"
+        }
     }
 
     private func filledChip(_ text: String, _ tint: Color, _ help: String) -> some View {
