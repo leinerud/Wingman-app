@@ -804,7 +804,6 @@ struct MoreMenu: View {
             } label: { Label("Colour tag", systemImage: "tag") }
             Divider()
             Button { SessionActions.showInFinder(session) } label: { Label("Show project files in Finder", systemImage: "folder") }
-            Button { SessionActions.openInEditor(session) } label: { Label("Open in code editor", systemImage: "chevron.left.forwardslash.chevron.right") }
             if session.repository != nil {
                 Divider()
                 Button { SessionActions.openBranch(session) } label: { Label("See my version on GitHub", systemImage: "arrow.triangle.branch") }
