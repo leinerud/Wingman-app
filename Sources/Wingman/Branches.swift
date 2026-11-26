@@ -729,8 +729,6 @@ private struct BranchLine: View {
             .disabled(folderURL == nil)
         Button { openInCopilot() } label: { Label("Open in GitHub Copilot", systemImage: "sparkles") }
             .disabled(folderURL == nil || NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.github.githubapp") == nil)
-        Button { openApp("com.microsoft.VSCode") } label: { Label("Open in VS Code", systemImage: "chevron.left.forwardslash.chevron.right") }
-            .disabled(folderURL == nil || NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.VSCode") == nil)
         Button { openApp("com.apple.Terminal") } label: { Label("Open in Terminal", systemImage: "terminal") }
             .disabled(folderURL == nil)
         Divider()
@@ -804,7 +802,7 @@ private struct BranchLine: View {
                         .accessibilityLabel("More actions for \(row.name)")
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 26, height: 26)
-                .help("More actions: review requests, compare with main, open in GitHub Copilot, VS Code or Terminal, copy commands. Right-click the row for the same menu.")
+                .help("More actions: review requests, compare with main, open in GitHub Copilot or Terminal, copy commands. Right-click the row for the same menu.")
             }.opacity(hover ? 1 : 0)
         }
         adviceBox

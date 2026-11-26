@@ -45,12 +45,6 @@ enum SessionActions {
     static func showInFinder(_ s: CopilotSession) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: s.cwd)])
     }
-    static func openInEditor(_ s: CopilotSession) {
-        let dir = URL(fileURLWithPath: s.cwd)
-        if let vsc = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.VSCode") {
-            NSWorkspace.shared.open([dir], withApplicationAt: vsc, configuration: NSWorkspace.OpenConfiguration())
-        } else { NSWorkspace.shared.open(dir) }
-    }
     static func githubURL(_ s: CopilotSession, path: String) -> URL? {
         guard let repo = s.repository else { return nil }
         return URL(string: "https://github.com/\(repo)\(path)")
