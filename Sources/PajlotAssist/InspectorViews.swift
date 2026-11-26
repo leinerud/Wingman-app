@@ -435,7 +435,7 @@ private struct TimelineTab: View {
                             }
                             Button { copy(sha.sha, id: sha.sha) } label: { Label("Copy version ID", systemImage: "doc.on.doc") }
                             if let url = SessionActions.githubURL(session, path: "/commit/\(sha.sha)") {
-                                Button { NSWorkspace.shared.open(url) } label: { Label("Open on GitHub", systemImage: "arrow.up.right.square") }
+                                Button { Links.open(url) } label: { Label("Open on GitHub", systemImage: "arrow.up.right.square") }
                             }
                         } label: { Text(copied == sha.sha ? "Copied" : "More") }
                         .menuStyle(.borderlessButton).fixedSize()

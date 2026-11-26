@@ -208,6 +208,88 @@ private struct MockWidget: View {
     }
 }
 
+// MARK: - Which browser opens links
+
+/// Opens web links in the browser chosen in Settings, or the system default.
+enum Links {
+    static let key = "linkBrowser"    // bundle ID of the chosen browser; empty = system default
+
+    struct Browser: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let url: URL
+    }
+
+    private static let probe = URL(string: "https://example.com")!
+
+    /// Every installed app that can open web pages.
+    static func installed() -> [Browser] {
+        let ids = (LSCopyAllHandlersForURLScheme("https" as CFString)?.takeRetainedValue() as? [String]) ?? []
+        var seen = Set<String>(), out: [Browser] = []
+        for id in ids {
+            let key = id.lowercased()
+            guard seen.insert(key).inserted, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { continue }
+            out.append(Browser(id: id, name: FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""), url: url))
+        }
+        return out.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    static func systemDefault() -> Browser? {
+        guard let url = NSWorkspace.shared.urlForApplication(toOpen: probe), let id = Bundle(url: url)?.bundleIdentifier else { return nil }
+        return Browser(id: id, name: FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""), url: url)
+    }
+
+    static func open(_ url: URL) {
+        let id = UserDefaults.standard.string(forKey: key) ?? ""
+        if !id.isEmpty, url.scheme == "http" || url.scheme == "https",
+           let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
+            NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+        } else {
+            NSWorkspace.shared.open(url)   // the chosen browser is gone, or this isn't a web link
+        }
+    }
+}
+
+struct BrowserSettings: View {
+    @AppStorage(Links.key) private var choice = ""
+    @State private var browsers = Links.installed()
+    @State private var systemDefault = Links.systemDefault()
+
+    private func icon(_ url: URL) -> Image {
+        let img = NSWorkspace.shared.icon(forFile: url.path)
+        img.size = NSSize(width: 16, height: 16)
+        return Image(nsImage: img)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Links to GitHub and other web pages open in this browser. Files and folders still open in their usual apps.")
+                .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Picker("Open links in", selection: $choice) {
+                    Label { Text(systemDefault.map { "System default (\($0.name))" } ?? "System default") } icon: {
+                        if let d = systemDefault { icon(d.url) } else { Image(systemName: "globe") }
+                    }.tag("")
+                    Divider()
+                    ForEach(browsers) { b in
+                        Label { Text(b.name) } icon: { icon(b.url) }.tag(b.id)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 260)
+                .help("Choose which browser opens links from Pajlot Assist")
+                Button("Try it") { Links.open(URL(string: "https://github.com")!) }
+                    .help("Opens github.com in the browser you picked")
+            }
+        }
+        .onAppear {
+            browsers = Links.installed(); systemDefault = Links.systemDefault()
+            // A browser that has been uninstalled since would leave the picker empty.
+            if !choice.isEmpty, !browsers.contains(where: { $0.id == choice }) { choice = "" }
+        }
+    }
+}
+
 // MARK: - Settings
 
 /// Shows which folders Pajlot Assist may read, and lets you change them.
@@ -236,6 +318,7 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             section("Where Pajlot Assist lives") { PlacementPicker() }
+            section("Open links in") { BrowserSettings() }
             section("Access to your files") { AccessSettings() }
             section("Desktop widget") {
                 VStack(alignment: .leading, spacing: 8) {

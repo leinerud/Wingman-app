@@ -23,12 +23,12 @@ enum SessionActions {
     static func openBranch(_ s: CopilotSession) {
         guard let b = s.branch?.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
               let url = githubURL(s, path: "/tree/\(b)") else { return }
-        NSWorkspace.shared.open(url)
+        Links.open(url)
     }
     static func openPullRequests(_ s: CopilotSession) {
         guard let b = s.branch?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = githubURL(s, path: "/pulls?q=is%3Apr+head%3A\(b)") else { return }
-        NSWorkspace.shared.open(url)
+        Links.open(url)
     }
     static func copyID(_ s: CopilotSession) {
         NSPasteboard.general.clearContents()

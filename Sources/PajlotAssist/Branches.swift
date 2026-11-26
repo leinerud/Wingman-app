@@ -455,7 +455,7 @@ private struct RepoSection: View {
                     IconButton(symbol: "folder", help: "Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: f)]) }
                 }
                 if let url = URL(string: "https://github.com/\(repo.name)"), repo.name.contains("/") {
-                    IconButton(symbol: "arrow.up.right.square", help: "Open on GitHub") { NSWorkspace.shared.open(url) }
+                    IconButton(symbol: "arrow.up.right.square", help: "Open on GitHub") { Links.open(url) }
                 }
             }
             if !working.isEmpty { group("In progress", Palette.working, working) { EmptyView() } }
@@ -554,11 +554,11 @@ private struct BranchLine: View {
     }
 
     @ViewBuilder private var actions: some View {
-        Button { if let u = branchURL { NSWorkspace.shared.open(u) } } label: { Label("View on GitHub", systemImage: "arrow.up.right.square") }
+        Button { if let u = branchURL { Links.open(u) } } label: { Label("View on GitHub", systemImage: "arrow.up.right.square") }
             .disabled(branchURL == nil)
-        Button { if let u = pullsURL { NSWorkspace.shared.open(u) } } label: { Label("See review requests on GitHub", systemImage: "arrow.triangle.pull") }
+        Button { if let u = pullsURL { Links.open(u) } } label: { Label("See review requests on GitHub", systemImage: "arrow.triangle.pull") }
             .disabled(pullsURL == nil)
-        Button { if let u = compareURL { NSWorkspace.shared.open(u) } } label: { Label("Compare with main or ask for a review", systemImage: "arrow.left.arrow.right") }
+        Button { if let u = compareURL { Links.open(u) } } label: { Label("Compare with main or ask for a review", systemImage: "arrow.left.arrow.right") }
             .disabled(compareURL == nil)
         Button(role: .destructive) { remove() } label: { Label(row.closeable ? "Remove from this Mac…" : "Remove from this Mac (not finished)…", systemImage: "trash") }
             .disabled(!gitOK || BranchCleanup.blocker(row) != nil)
@@ -618,7 +618,7 @@ private struct BranchLine: View {
             }
             Spacer(minLength: 6)
             HStack(spacing: 0) {
-                IconButton(symbol: "arrow.up.right.square", help: "View this branch on GitHub") { if let u = branchURL { NSWorkspace.shared.open(u) } }
+                IconButton(symbol: "arrow.up.right.square", help: "View this branch on GitHub") { if let u = branchURL { Links.open(u) } }
                     .disabled(branchURL == nil)
                 IconButton(symbol: "folder", help: "Show the project folder in Finder") { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } }
                     .disabled(folderURL == nil)
@@ -646,7 +646,7 @@ private struct BranchLine: View {
         .onHover { hover = $0 }
         .contextMenu { actions }
         .accessibilityElement(children: .combine)
-        .accessibilityAction(named: "Open on GitHub") { if let u = branchURL { NSWorkspace.shared.open(u) } }
+        .accessibilityAction(named: "Open on GitHub") { if let u = branchURL { Links.open(u) } }
         .accessibilityAction(named: "Copy branch name") { copy(row.name, label: "name") }
     }
 
