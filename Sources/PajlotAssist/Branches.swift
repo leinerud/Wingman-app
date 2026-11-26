@@ -304,51 +304,103 @@ private struct RepoSection: View {
 private struct BranchLine: View {
     let row: BranchRow
     @State private var hover = false
+    @State private var copied: String?
 
-    private var githubURL: URL? {
-        guard row.repo.contains("/") else { return nil }
-        let b = row.name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? row.name
-        return URL(string: "https://github.com/\(row.repo)/tree/\(b)")
+    private var folderURL: URL? {
+        guard let f = row.folder, FileManager.default.fileExists(atPath: f) else { return nil }
+        return URL(fileURLWithPath: f)
+    }
+    private func github(_ path: String) -> URL? {
+        row.repo.contains("/") ? URL(string: "https://github.com/\(row.repo)\(path)") : nil
+    }
+    private var encodedName: String { row.name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? row.name }
+    private var encodedQuery: String { row.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? row.name }
+    private var branchURL: URL? { github("/tree/\(encodedName)") }
+    private var pullsURL: URL? { github("/pulls?q=is%3Apr+head%3A\(encodedQuery)") }
+    private var compareURL: URL? { github("/compare/\(encodedName)") }
+
+    // MARK: Actions (the same list is used by the ⋯ menu and by right-click)
+
+    private func openApp(_ bundleID: String) {
+        guard let dir = folderURL, let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
+        NSWorkspace.shared.open([dir], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+    private func copy(_ text: String, label: String) {
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
+        copied = label
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { if copied == label { copied = nil } }
+    }
+
+    @ViewBuilder private var actions: some View {
+        Button { if let u = branchURL { NSWorkspace.shared.open(u) } } label: { Label("Open branch on GitHub", systemImage: "arrow.up.right.square") }
+            .disabled(branchURL == nil)
+        Button { if let u = pullsURL { NSWorkspace.shared.open(u) } } label: { Label("Show pull requests for this branch", systemImage: "arrow.triangle.pull") }
+            .disabled(pullsURL == nil)
+        Button { if let u = compareURL { NSWorkspace.shared.open(u) } } label: { Label("Compare or open a pull request on GitHub", systemImage: "arrow.left.arrow.right") }
+            .disabled(compareURL == nil)
+        Divider()
+        Button { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } } label: { Label("Show project folder in Finder", systemImage: "folder") }
+            .disabled(folderURL == nil)
+        Button { openApp("com.microsoft.VSCode") } label: { Label("Open in code editor", systemImage: "chevron.left.forwardslash.chevron.right") }
+            .disabled(folderURL == nil)
+        Button { openApp("com.apple.Terminal") } label: { Label("Open in Terminal", systemImage: "terminal") }
+            .disabled(folderURL == nil)
+        Divider()
+        Button { copy(row.name, label: "name") } label: { Label("Copy branch name", systemImage: "doc.on.doc") }
+        Button { copy("git -C \"\(row.folder ?? ".")\" switch \(row.name)", label: "command") } label: { Label("Copy command to switch to this branch", systemImage: "terminal.fill") }
+            .disabled(row.folder == nil || row.existsLocally == false)
+        Button { if let u = branchURL { copy(u.absoluteString, label: "link") } } label: { Label("Copy GitHub link", systemImage: "link") }
+            .disabled(branchURL == nil)
     }
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: row.isCurrent ? "arrow.triangle.branch" : "arrow.triangle.branch")
+            Image(systemName: "arrow.triangle.branch")
                 .font(.system(size: 11, weight: .medium)).foregroundStyle(row.isCurrent ? Palette.working : Palette.muted).frame(width: 16)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(row.name).font(.system(size: 12.5, weight: .semibold)).lineLimit(1).truncationMode(.middle)
-                    if row.isCurrent { chip("Checked out", Palette.working) }
-                    if row.dirty > 0 { chip("\(row.dirty) unsaved", Palette.attention) }
-                    if let t = row.track, !t.isEmpty { chip(t, Palette.attention) }
-                    if row.existsLocally == true, row.upstream == nil, row.upstreamKnown { chip("Not pushed", Palette.attention) }
-                    if row.existsLocally == false { chip("Not on this Mac", Palette.muted) }
+                    if row.isCurrent { chip("Checked out", Palette.working, "This branch is open in the project folder right now") }
+                    if row.dirty > 0 { chip("\(row.dirty) unsaved", Palette.attention, "\(row.dirty) files have changes that aren't saved as a version yet") }
+                    if let t = row.track, !t.isEmpty { chip(t, Palette.attention, "Compared with the same branch on GitHub") }
+                    if row.existsLocally == true, row.upstream == nil, row.upstreamKnown { chip("Not pushed", Palette.attention, "This branch only exists on your Mac. It has not been sent to GitHub") }
+                    if row.existsLocally == false { chip("Not on this Mac", Palette.muted, "Copilot used this branch, but it is gone from the project folder (often a temporary workspace that was cleaned up)") }
                 }
                 HStack(spacing: 5) {
-                    if let d = row.lastActive { Text(d, format: .relative(presentation: .named, unitsStyle: .abbreviated)) }
-                    if row.sessions > 0 { Text("· \(row.sessions) \(row.sessions == 1 ? "session" : "sessions")") }
+                    if let c = copied { Text("Copied \(c)").foregroundStyle(Palette.ready) }
+                    else {
+                        if let d = row.lastActive { Text(d, format: .relative(presentation: .named, unitsStyle: .abbreviated)) }
+                        if row.sessions > 0 { Text("· \(row.sessions) \(row.sessions == 1 ? "session" : "sessions")") }
+                    }
                 }.font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 6)
             HStack(spacing: 0) {
-                if let f = row.folder, FileManager.default.fileExists(atPath: f) {
-                    IconButton(symbol: "folder", help: "Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: f)]) }
+                IconButton(symbol: "arrow.up.right.square", help: "Open this branch on GitHub") { if let u = branchURL { NSWorkspace.shared.open(u) } }
+                    .disabled(branchURL == nil)
+                IconButton(symbol: "folder", help: "Show the project folder in Finder") { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } }
+                    .disabled(folderURL == nil)
+                IconButton(symbol: "doc.on.doc", help: "Copy the branch name") { copy(row.name, label: "name") }
+                Menu { actions } label: {
+                    Image(systemName: "ellipsis").font(.system(size: 11.5, weight: .semibold))
                 }
-                if let url = githubURL { IconButton(symbol: "arrow.up.right.square", help: "Open this branch on GitHub") { NSWorkspace.shared.open(url) } }
-                IconButton(symbol: "doc.on.doc", help: "Copy branch name") {
-                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(row.name, forType: .string)
-                }
-            }.opacity(hover ? 1 : 0.35)
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 26, height: 26)
+                .help("More actions: pull requests, compare, open in editor or Terminal, copy a switch command. Right-click the row for the same menu.")
+            }.opacity(hover ? 1 : 0.45)
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
         .background(Palette.well.opacity(hover ? 0.5 : 0))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
+        .contextMenu { actions }
         .accessibilityElement(children: .combine)
+        .accessibilityAction(named: "Open on GitHub") { if let u = branchURL { NSWorkspace.shared.open(u) } }
+        .accessibilityAction(named: "Copy branch name") { copy(row.name, label: "name") }
     }
 
-    private func chip(_ text: String, _ tint: Color) -> some View {
+    private func chip(_ text: String, _ tint: Color, _ help: String) -> some View {
         Text(text).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(tint)
             .padding(.horizontal, 6).frame(height: 16).background(Capsule().fill(tint.opacity(0.13)))
+            .help(help)
     }
 }
