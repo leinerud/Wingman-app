@@ -34,6 +34,7 @@
 		B120 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C020 /* PrivacyInfo.xcprivacy */; };
 		B118 /* Branches.swift in Sources */ = {isa = PBXBuildFile; fileRef = A118 /* Branches.swift */; };
 		B119 /* BranchesCompact.swift in Sources */ = {isa = PBXBuildFile; fileRef = A119 /* BranchesCompact.swift */; };
+		B121 /* BranchDetails.swift in Sources */ = {isa = PBXBuildFile; fileRef = A121 /* BranchDetails.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -92,6 +93,7 @@
 		C020 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A118 /* Branches.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Branches.swift; sourceTree = "<group>"; };
 		A119 /* BranchesCompact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BranchesCompact.swift; sourceTree = "<group>"; };
+		A121 /* BranchDetails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BranchDetails.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -142,6 +144,7 @@
 				A117 /* Access.swift */,
 				A118 /* Branches.swift */,
 				A119 /* BranchesCompact.swift */,
+				A121 /* BranchDetails.swift */,
 			);
 			name = Wingman;
 			path = Sources/Wingman;
@@ -319,6 +322,7 @@
 				B117 /* Access.swift in Sources */,
 				B118 /* Branches.swift in Sources */,
 				B119 /* BranchesCompact.swift in Sources */,
+				B121 /* BranchDetails.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
