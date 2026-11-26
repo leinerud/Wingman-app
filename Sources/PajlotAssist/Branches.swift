@@ -403,7 +403,7 @@ private struct RepoSection: View {
                 }
             }
             if !working.isEmpty { group("Working on", Palette.working, working, nil) }
-            if !other.isEmpty { group("Other", Palette.muted, other, nil) }
+            if !other.isEmpty { group("Idle", Palette.muted, other, nil) }
             if !closeable.isEmpty {
                 group("Merged · can be closed", Palette.ready, closeable) {
                     Button {
@@ -432,6 +432,10 @@ private struct RepoSection: View {
                 Circle().fill(tint).frame(width: 6, height: 6)
                 Text(title.uppercased()).font(.system(size: 10, weight: .bold)).tracking(0.6).foregroundStyle(tint)
                 Text("\(list.count)").font(.system(size: 10, weight: .medium).monospacedDigit()).foregroundStyle(.tertiary)
+                if title == "Idle" {
+                    Image(systemName: "questionmark.circle").font(.system(size: 10)).foregroundStyle(.tertiary)
+                        .help("Not touched in the last 7 days, nothing unsaved, no live session, and not known to be merged. Old or unfinished work. Branches marked “Merge status unknown” need the project folder to be allowed.")
+                }
                 Spacer()
                 trailing?()
             }
@@ -443,7 +447,7 @@ private struct RepoSection: View {
                 }
             }
             .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.card))
-            .overlay(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).strokeBorder(tint.opacity(title == "Other" ? 0 : 0.35)))
+            .overlay(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).strokeBorder(tint.opacity(title == "Idle" ? 0 : 0.35)))
             .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
         }
     }
@@ -531,6 +535,9 @@ private struct BranchLine: View {
                     if row.dirty > 0 { chip("\(row.dirty) unsaved", Palette.attention, "\(row.dirty) files have changes that aren't saved as a version yet") }
                     if let t = row.track, !t.isEmpty, t != "gone" { chip(t, Palette.attention, "Compared with the same branch on GitHub") }
                     if row.existsLocally == true, row.upstream == nil, row.upstreamKnown { chip("Not pushed", Palette.attention, "This branch only exists on your Mac. It has not been sent to GitHub") }
+                    if row.merged == nil, !row.isDefault, row.existsLocally != false {
+                        chip("Merge status unknown", Palette.muted, "The app can't compare this branch with main. Click “Show local details…” on the repository and allow its folder.")
+                    }
                     if row.existsLocally == false { chip("Not on this Mac", Palette.muted, "Copilot used this branch, but it is gone from the project folder (often a temporary workspace that was cleaned up)") }
                 }
                 HStack(spacing: 5) {
