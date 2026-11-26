@@ -27,6 +27,7 @@ struct BranchRow: Identifiable, Hashable {
     var prs: [Int] = []               // pull requests Copilot opened for this branch (from the session list)
     var topic: String?                // what the latest session on this branch was about
     var commits = 0                   // how many changes Copilot saved while working on it (from the session list)
+    var copilot: CopilotWorkspace?    // the GitHub Copilot app's workspace for this branch; nil = it has none we know of
     var folder: String?
 
     var isDefault: Bool { ["main", "master", "develop", "development", "trunk"].contains(name) }
@@ -40,6 +41,9 @@ struct BranchRow: Identifiable, Hashable {
     /// What you are actually working on: unsaved changes, a live session, checked out, or touched this week.
     var working: Bool { !closeable && (dirty > 0 || sessionActive || (isCurrent && !isDefault) || touchedRecently) }
 }
+
+/// Whether the GitHub Copilot app still has a workspace open for a branch.
+enum CopilotWorkspace { case active, closed }
 
 /// A suggested next step for a branch, in plain language, for people who don't use git.
 struct Advice {
@@ -59,7 +63,9 @@ extension BranchRow {
         let removable = BranchCleanup.blocker(self) == nil
         if closeable {
             return Advice(tone: .done, headline: "Done. Safe to close.",
-                          detail: "This work is already part of the main version, so the separate copy isn't needed any more.",
+                          detail: copilot == .closed
+                            ? "This work is already part of the main version and it is closed in Copilot. Only the copy on your Mac is left."
+                            : "This work is already part of the main version, so the separate copy isn't needed any more.",
                           action: removable ? .remove : nil, actionLabel: removable ? "Remove from this Mac…" : nil)
         }
         if let n = prs.max() {
@@ -89,9 +95,12 @@ extension BranchRow {
                               action: .compare, actionLabel: "Ask for a review")
             }
             if (ahead ?? commits) > 0 {
+                let closed = copilot == .closed
                 return Advice(tone: .decide, headline: "Decide: finish it or let it go",
-                              detail: "This work only exists on your Mac. To finish it, open it in Copilot and ask it to open a pull request. If you don't need it, remove it.",
-                              action: .openCopilot, actionLabel: "Open in GitHub Copilot")
+                              detail: closed
+                                ? "This work only exists on your Mac, and it is closed in Copilot. To finish it, reopen it in Copilot (Restore) and ask it to open a pull request. If you don't need it, remove it."
+                                : "This work only exists on your Mac. To finish it, open it in Copilot and ask it to open a pull request. If you don't need it, remove it.",
+                              action: .openCopilot, actionLabel: closed ? "Reopen in GitHub Copilot" : "Open in GitHub Copilot")
             }
             return Advice(tone: .nothing, headline: "Empty. Safe to remove.",
                           detail: "Nothing was changed on this branch, so removing it loses nothing.",
@@ -164,6 +173,17 @@ enum BranchLoader {
             if let repo = row["repository"], let b = row["branch"], let n = row["n"].flatMap({ Int($0) }) { commitMap[repo + "|" + b] = n }
         }
 
+        // The GitHub Copilot app's own workspaces: active if any workspace on the branch isn't archived.
+        var copilotMap: [String: CopilotWorkspace] = [:]
+        for row in SQLiteReader.rows(path: Access.copilotPath + "/data.db", sql: """
+            SELECT w.branch AS branch, b.repo_full_name AS repo, w.archived_at AS archived
+            FROM workspaces w LEFT JOIN workspace_checkout_bindings b ON b.workspace_id = w.id
+            """) {
+            guard let b = row["branch"], !b.isEmpty else { continue }
+            let state: CopilotWorkspace = row["archived"] == nil ? .active : .closed
+            for key in [(row["repo"] ?? "") + "|" + b, "|" + b] where copilotMap[key] != .active { copilotMap[key] = state }
+        }
+
         var out: [RepoBranches] = []
         for (name, acc) in repos {
             var branches = acc.branches
@@ -210,6 +230,8 @@ enum BranchLoader {
             for key in Array(branches.keys) {
                 branches[key]?.prs = (prMap[name + "|" + key] ?? []).sorted()
                 branches[key]?.commits = commitMap[name + "|" + key] ?? 0
+                let isDefault = branches[key]?.isDefault == true
+                branches[key]?.copilot = copilotMap[name + "|" + key] ?? (isDefault ? nil : copilotMap["|" + key])
             }
             out.append(RepoBranches(name: name, folders: folders, branches: Array(branches.values), needsAccess: needsAccess, basicLocal: basic))
         }
@@ -727,8 +749,13 @@ private struct BranchLine: View {
         Divider()
         Button { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } } label: { Label("Show project folder in Finder", systemImage: "folder") }
             .disabled(folderURL == nil)
-        Button { openInCopilot() } label: { Label("Open in GitHub Copilot", systemImage: "sparkles") }
-            .disabled(folderURL == nil || NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.github.githubapp") == nil)
+        if row.copilot == .closed && row.closeable {
+            // Finished and archived in Copilot: there is nothing left to do there.
+            Button {} label: { Label("Closed in GitHub Copilot", systemImage: "checkmark.circle") }.disabled(true)
+        } else {
+            Button { openInCopilot() } label: { Label(row.copilot == .closed ? "Reopen in GitHub Copilot" : "Open in GitHub Copilot", systemImage: "sparkles") }
+                .disabled(NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.github.githubapp") == nil)
+        }
         Button { openApp("com.apple.Terminal") } label: { Label("Open in Terminal", systemImage: "terminal") }
             .disabled(folderURL == nil)
         Divider()
@@ -768,6 +795,7 @@ private struct BranchLine: View {
                     }
                     if let n = row.prs.max() { chip("PR #\(n)", Palette.muted, "Copilot opened pull request #\(n) for this branch. Use the ⋯ menu to open it.") }
                     if row.onGitHub == false, row.existsLocally == false { chip("Not on GitHub", Palette.muted, missingOnGitHub) }
+                    if row.copilot == .closed, !row.working { chip("Closed in Copilot", Palette.muted, "Its workspace in the GitHub Copilot app is archived. Restore it there if you want to keep working on it.") }
                     if row.existsLocally == false { chip("Not on this Mac", Palette.muted, "Copilot worked on this, but it is gone from your project folder. Often a temporary workspace that was cleaned up.") }
                 }
                 if let t = row.topic {
