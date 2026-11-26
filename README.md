@@ -11,3 +11,7 @@ Reads `~/.copilot` read-only. Build with `./Scripts/build-app.sh` or the Xcode p
 - **Pin, rename and colour-tag** sessions (right-click a card, or the ⋯ menu; double-click a title to rename). Stored on this Mac only. Pins also work from the desktop widget.
 - **Review window** (the "Review" chip on a card): *Changes* shows what changed per screen/component in plain words (colour #333 → #000, text size 12 → 13); *Tokens* flags hard-coded colours, text sizes and spacing that aren't in the project's own token/theme files (or the 4-pt grid); *Timeline* lists git versions and shows what each changed; *Preview* shows the project's dev server (auto-detected) at desktop/tablet/phone width, reloads as the session works, and compares a saved "before" against now with a slider.
 - Everything reads git read-only. Restoring an older version is a command you copy and run yourself.
+
+## Branches
+
+The Branches window (⌘B from the popover) lists every repository and branch your Copilot sessions have used, split into *In progress*, *Paused* and *Done · safe to close*. Finished branches can be removed from your Mac with **Clean up** (you review the list first, git refuses anything it can't confirm as merged unless you tick it, and **Undo** brings them back). Only local copies are removed, never anything on GitHub. Needs git; without it you can copy the commands instead.

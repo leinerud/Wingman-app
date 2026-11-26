@@ -216,7 +216,7 @@ struct AccessSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Pajlot Assist only reads. It never changes your sessions or projects. macOS needs your OK for each folder.")
+            Text("Pajlot Assist reads your sessions and projects. It only changes something when you ask, such as removing a finished branch from your Mac. macOS needs your OK for each folder.")
                 .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Image(systemName: copilot ? "checkmark.circle.fill" : "exclamationmark.circle").foregroundStyle(copilot ? Palette.ready : Palette.attention)

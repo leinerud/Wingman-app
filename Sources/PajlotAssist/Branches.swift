@@ -238,6 +238,8 @@ struct BranchesWindow: View {
     @AppStorage("branches.filter") private var filterRaw = BranchFilter.all.rawValue
     @State private var query = ""
     @State private var showGlossary = false
+    @State private var cleanup: CleanupRequest?
+    @State private var lastRemoval: [RemovedBranch] = []
     @AppStorage("branches.introDismissed") private var introDismissed = false
 
     enum BranchFilter: String, CaseIterable, Identifiable {
@@ -293,7 +295,11 @@ struct BranchesWindow: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16, pinnedViews: []) {
                         if !introDismissed { BranchIntro { withAnimation { introDismissed = true } } }
-                        ForEach(shown, id: \.repo.id) { item in RepoSection(repo: item.repo, rows: item.rows, reload: model.refresh) }
+                        ForEach(shown, id: \.repo.id) { item in
+                            RepoSection(repo: item.repo, rows: item.rows, reload: model.refresh) { rows in
+                                cleanup = CleanupRequest(repo: item.repo.name, rows: rows)
+                            }
+                        }
                     }
                     .padding(18)
                 }
@@ -304,6 +310,33 @@ struct BranchesWindow: View {
         .navigationTitle("Branches")
         .onAppear { model.refresh() }
         .onChange(of: store.sessions.first?.updatedAt) { _, _ in model.refresh() }
+        .sheet(item: $cleanup) { req in
+            CleanupSheet(request: req) { outcome in
+                cleanup = nil
+                if let o = outcome, !o.removed.isEmpty { withAnimation { lastRemoval = o.removed }; model.refresh() }
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if !lastRemoval.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "trash").foregroundStyle(.secondary)
+                    Text(lastRemoval.count == 1 ? "Removed 1 branch from your Mac" : "Removed \(lastRemoval.count) branches from your Mac").font(.system(size: 12, weight: .medium))
+                    Button("Undo") { undo() }
+                        .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: true))
+                        .help("Bring the removed branches back exactly as they were")
+                    IconButton(symbol: "xmark", help: "Dismiss this message") { withAnimation { lastRemoval = [] } }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Capsule().fill(Palette.card).shadow(color: .black.opacity(0.18), radius: 10, y: 3))
+                .overlay(Capsule().strokeBorder(Palette.hairline))
+                .padding(.bottom, 16)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .task(id: lastRemoval.first?.date) {
+                    try? await Task.sleep(for: .seconds(90))
+                    withAnimation { lastRemoval = [] }
+                }
+            }
+        }
     }
 
     private var toolbar: some View {
@@ -327,6 +360,15 @@ struct BranchesWindow: View {
             IconButton(symbol: "arrow.clockwise", help: "Reload", shortcut: "r") { model.refresh() }
         }
         .padding(.horizontal, 18).padding(.vertical, 12)
+    }
+
+    private func undo() {
+        let items = lastRemoval
+        withAnimation { lastRemoval = [] }
+        Task.detached(priority: .userInitiated) {
+            _ = BranchCleanup.restore(items)
+            await MainActor.run { model.refresh() }
+        }
     }
 
     private var counts: (working: Int, closeable: Int, all: Int) {
@@ -378,7 +420,11 @@ private struct RepoSection: View {
     let repo: RepoBranches
     let rows: [BranchRow]
     let reload: () -> Void
+    let cleanup: ([BranchRow]) -> Void
     @State private var copied = false
+
+    private var gitOK: Bool { !repo.basicLocal }
+    private var removable: [BranchRow] { closeable.filter { BranchCleanup.blocker($0) == nil } }
 
     private var working: [BranchRow] { rows.filter(\.working) }
     private var closeable: [BranchRow] { rows.filter(\.closeable) }
@@ -412,10 +458,18 @@ private struct RepoSection: View {
                     IconButton(symbol: "arrow.up.right.square", help: "Open on GitHub") { NSWorkspace.shared.open(url) }
                 }
             }
-            if !working.isEmpty { group("In progress", Palette.working, working, nil) }
-            if !other.isEmpty { group("Paused", Palette.muted, other, nil) }
+            if !working.isEmpty { group("In progress", Palette.working, working) { EmptyView() } }
+            if !other.isEmpty { group("Paused", Palette.muted, other) { EmptyView() } }
             if !closeable.isEmpty {
                 group("Done · safe to close", Palette.ready, closeable) {
+                    Button { cleanup(closeable) } label: {
+                        HStack(spacing: 4) { Image(systemName: "sparkles"); Text("Clean up \(removable.count)…") }
+                    }
+                    .buttonStyle(PillButtonStyle(tint: Palette.ready, filled: true))
+                    .disabled(removable.isEmpty || !gitOK)
+                    .help(!gitOK ? "Git can't run in this version of the app, so use “Copy tidy-up commands” instead."
+                          : removable.isEmpty ? "Nothing here can be removed right now."
+                          : "Review and remove these finished branches from your Mac. You see the list first, and can undo.")
                     Button {
                         let cmd = cleanupCommands()
                         guard !cmd.isEmpty else { return }
@@ -436,7 +490,7 @@ private struct RepoSection: View {
         }
     }
 
-    @ViewBuilder private func group(_ title: String, _ tint: Color, _ list: [BranchRow], _ trailing: (() -> some View)?) -> some View {
+    @ViewBuilder private func group<T: View>(_ title: String, _ tint: Color, _ list: [BranchRow], @ViewBuilder trailing: () -> T) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Circle().fill(tint).frame(width: 6, height: 6)
@@ -451,12 +505,12 @@ private struct RepoSection: View {
                         .help("This work has already been added to the main version, so the separate copy isn't needed any more.")
                 }
                 Spacer()
-                trailing?()
+                trailing()
             }
             .padding(.leading, 3)
             VStack(spacing: 0) {
                 ForEach(Array(list.enumerated()), id: \.element.id) { i, b in
-                    BranchLine(row: b)
+                    BranchLine(row: b, gitOK: gitOK) { cleanup([b]) }
                     if i < list.count - 1 { Divider().opacity(0.4) }
                 }
             }
@@ -465,14 +519,12 @@ private struct RepoSection: View {
             .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
         }
     }
-
-    private func group(_ title: String, _ tint: Color, _ list: [BranchRow], _ trailing: Void?) -> some View {
-        group(title, tint, list, Optional<() -> EmptyView>.none)
-    }
 }
 
 private struct BranchLine: View {
     let row: BranchRow
+    var gitOK = true
+    var remove: () -> Void = {}
     @State private var hover = false
     @State private var copied: String?
 
@@ -508,6 +560,8 @@ private struct BranchLine: View {
             .disabled(pullsURL == nil)
         Button { if let u = compareURL { NSWorkspace.shared.open(u) } } label: { Label("Compare with main or ask for a review", systemImage: "arrow.left.arrow.right") }
             .disabled(compareURL == nil)
+        Button(role: .destructive) { remove() } label: { Label(row.closeable ? "Remove from this Mac…" : "Remove from this Mac (not finished)…", systemImage: "trash") }
+            .disabled(!gitOK || BranchCleanup.blocker(row) != nil)
         Divider()
         Button { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } } label: { Label("Show project folder in Finder", systemImage: "folder") }
             .disabled(folderURL == nil)
@@ -568,6 +622,10 @@ private struct BranchLine: View {
                     .disabled(branchURL == nil)
                 IconButton(symbol: "folder", help: "Show the project folder in Finder") { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } }
                     .disabled(folderURL == nil)
+                if row.closeable {
+                    IconButton(symbol: "trash", help: gitOK ? (BranchCleanup.blocker(row).map { "Can't remove: \($0)" } ?? "Remove this finished branch from your Mac. You confirm first and can undo.") : "Git can't run in this version of the app. Use the menu to copy a command instead.") { remove() }
+                        .disabled(!gitOK || BranchCleanup.blocker(row) != nil)
+                }
                 IconButton(symbol: "doc.on.doc", help: "Copy the name of this branch") { copy(row.name, label: "name") }
                 Menu { actions } label: {
                     Image(systemName: "ellipsis").font(.system(size: 11.5, weight: .semibold))
@@ -673,5 +731,243 @@ private struct BranchIntro: View {
     }
     private func legend(_ tint: Color, _ text: String) -> some View {
         HStack(spacing: 5) { Circle().fill(tint).frame(width: 7, height: 7); Text(text).font(.system(size: 11)).foregroundStyle(.secondary) }
+    }
+}
+
+// MARK: - Cleaning up branches
+
+/// A branch that was removed from this Mac, with the exact point it pointed at so it can be brought back.
+struct RemovedBranch: Codable, Hashable, Identifiable {
+    var id: String { folder + "|" + name }
+    let repo: String
+    let name: String
+    let folder: String
+    let sha: String
+    let date: Date
+}
+
+struct RemoveOutcome {
+    var removed: [RemovedBranch] = []
+    var failed: [(name: String, reason: String)] = []
+}
+
+/// Removing finished branches. Only ever deletes the local copy on this Mac, never anything on GitHub.
+enum BranchCleanup {
+    enum Safety { case merged, probablyMerged, unmerged(Int?) }
+
+    nonisolated static func safety(_ b: BranchRow) -> Safety {
+        if b.merged == true { return .merged }
+        if b.remoteGone { return .probablyMerged }
+        return .unmerged(b.ahead)
+    }
+
+    /// nil when the branch can be removed; otherwise the reason it can't.
+    nonisolated static func blocker(_ b: BranchRow) -> String? {
+        if b.isDefault { return "This is the main version." }
+        if b.isCurrent { return "It is open on your Mac right now." }
+        if b.sessionActive { return "A Copilot session is using it." }
+        if b.dirty > 0 { return "It has unsaved changes." }
+        if b.existsLocally != true || b.folder == nil { return "It isn't on this Mac." }
+        return nil
+    }
+
+    /// `force` removes it even when git can't confirm it is merged (the commits would only survive in git's history).
+    nonisolated static func remove(_ items: [(row: BranchRow, force: Bool)]) -> RemoveOutcome {
+        var out = RemoveOutcome()
+        for (row, force) in items {
+            if let why = blocker(row) { out.failed.append((row.name, why)); continue }
+            guard let folder = row.folder else { continue }
+            // Remember where the branch pointed so it can be restored.
+            let sha = Git.runResult(["rev-parse", "--verify", "refs/heads/" + row.name], cwd: folder)
+            guard sha.ok else { out.failed.append((row.name, plain(sha.err))); continue }
+            let res = Git.runResult(["branch", force ? "-D" : "-d", "--", row.name], cwd: folder)
+            if res.ok {
+                out.removed.append(RemovedBranch(repo: row.repo, name: row.name, folder: folder,
+                                                 sha: sha.out.trimmingCharacters(in: .whitespacesAndNewlines), date: Date()))
+            } else {
+                out.failed.append((row.name, plain(res.err)))
+            }
+        }
+        record(out.removed)
+        return out
+    }
+
+    nonisolated static func restore(_ items: [RemovedBranch]) -> RemoveOutcome {
+        var out = RemoveOutcome()
+        for b in items {
+            let res = Git.runResult(["branch", "--", b.name, b.sha], cwd: b.folder)
+            if res.ok { out.removed.append(b) } else { out.failed.append((b.name, plain(res.err))) }
+        }
+        return out
+    }
+
+    private nonisolated static func plain(_ err: String) -> String {
+        let e = err.lowercased()
+        if e.contains("not fully merged") { return "Git can't confirm this is merged into main." }
+        if e.contains("checked out at") || e.contains("used by worktree") { return "It is open in another workspace." }
+        if e.contains("already exists") { return "A branch with this name already exists." }
+        if e.contains("not found") || e.contains("not a valid") { return "It no longer exists." }
+        return err.isEmpty ? "Git couldn't do it." : err
+    }
+
+    // A small log so removed branches can always be found again (also in git's own history).
+    private nonisolated static var logURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent("PajlotAssist/removed-branches.json")
+    }
+    private nonisolated static func record(_ items: [RemovedBranch]) {
+        guard !items.isEmpty else { return }
+        let url = logURL
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var all = (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode([RemovedBranch].self, from: $0) } ?? []
+        all.append(contentsOf: items)
+        if all.count > 500 { all.removeFirst(all.count - 500) }
+        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
+        if let data = try? enc.encode(all) { try? data.write(to: url, options: .atomic) }
+    }
+}
+
+struct CleanupRequest: Identifiable {
+    let id = UUID()
+    let repo: String
+    let rows: [BranchRow]
+}
+
+/// Confirmation step: shows exactly which branches go, why they are safe, and what each choice means.
+struct CleanupSheet: View {
+    let request: CleanupRequest
+    let finish: (RemoveOutcome?) -> Void
+    @State private var selected: Set<String>
+    @State private var phase: Phase = .confirm
+    enum Phase { case confirm, running, done(RemoveOutcome) }
+
+    init(request: CleanupRequest, finish: @escaping (RemoveOutcome?) -> Void) {
+        self.request = request; self.finish = finish
+        // Safe ones are ticked. Anything git can't confirm is left for you to choose, unless it is the only one.
+        let safe = request.rows.filter { if case .merged = BranchCleanup.safety($0) { return BranchCleanup.blocker($0) == nil } else { return false } }
+        let pre = request.rows.count == 1 ? request.rows.filter { BranchCleanup.blocker($0) == nil } : safe
+        _selected = State(initialValue: Set(pre.map(\.id)))
+    }
+
+    private var chosen: [BranchRow] { request.rows.filter { selected.contains($0.id) } }
+    private var forced: [BranchRow] { chosen.filter { if case .merged = BranchCleanup.safety($0) { return false } else { return true } } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            switch phase {
+            case .confirm: confirm
+            case .running:
+                VStack(spacing: 10) { ProgressView(); Text("Removing…").font(.system(size: 12)).foregroundStyle(.secondary) }
+                    .frame(maxWidth: .infinity, minHeight: 160)
+            case .done(let outcome): done(outcome)
+            }
+        }
+        .padding(20)
+        .frame(width: 480)
+        .background(Palette.canvas)
+    }
+
+    private var confirm: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(request.rows.count == 1 ? "Remove this branch from your Mac?" : "Tidy up \(request.repo.split(separator: "/").last.map(String.init) ?? request.repo)")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("This only removes the copies on your Mac. Nothing is deleted on GitHub, and finished work stays in main. You can undo right afterwards.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(Array(request.rows.enumerated()), id: \.element.id) { i, b in
+                        line(b)
+                        if i < request.rows.count - 1 { Divider().opacity(0.4) }
+                    }
+                }
+            }
+            .frame(maxHeight: 260)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Palette.card))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.hairline))
+
+            if !forced.isEmpty {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.attention)
+                    Text("\(forced.count) of these can't be confirmed as merged. If they hold work that isn't on GitHub or in main, it will be removed from your Mac (you can still undo right after).")
+                        .font(.system(size: 11.5)).fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10).background(RoundedRectangle(cornerRadius: 9).fill(Palette.attention.opacity(0.1)))
+            }
+            HStack {
+                if request.rows.count > 1 {
+                    Button(selected.count == request.rows.filter({ BranchCleanup.blocker($0) == nil }).count ? "Select none" : "Select all") {
+                        let all = Set(request.rows.filter { BranchCleanup.blocker($0) == nil }.map(\.id))
+                        selected = selected.count == all.count ? [] : all
+                    }.buttonStyle(.plain).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                      .help("Tick or untick every branch in the list")
+                }
+                Spacer()
+                Button("Cancel") { finish(nil) }.keyboardShortcut(.cancelAction)
+                Button { run() } label: { Text(chosen.count == 1 ? "Remove 1 branch" : "Remove \(chosen.count) branches") }
+                    .buttonStyle(PillButtonStyle(tint: forced.isEmpty ? Palette.ready : Palette.attention, filled: true))
+                    .disabled(chosen.isEmpty)
+                    .keyboardShortcut(.defaultAction)
+                    .help("Removes the ticked branches from your Mac only")
+            }
+        }
+    }
+
+    private func line(_ b: BranchRow) -> some View {
+        let blocker = BranchCleanup.blocker(b)
+        return HStack(alignment: .top, spacing: 10) {
+            Toggle("", isOn: Binding(get: { selected.contains(b.id) }, set: { on in if on { selected.insert(b.id) } else { selected.remove(b.id) } }))
+                .labelsHidden().toggleStyle(.checkbox).disabled(blocker != nil)
+                .accessibilityLabel("Remove \(b.name)")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(b.name).font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                Group {
+                    if let blocker { Text("Can't remove: \(blocker)").foregroundStyle(.secondary) }
+                    else {
+                        switch BranchCleanup.safety(b) {
+                        case .merged: Text("Already in main").foregroundStyle(Palette.ready)
+                        case .probablyMerged: Text("Removed on GitHub, probably merged. Git can't confirm.").foregroundStyle(Palette.attention)
+                        case .unmerged(let n): Text(n.map { "\($0) changes that are not in main" } ?? "Not confirmed as merged").foregroundStyle(Palette.attention)
+                        }
+                    }
+                }.font(.system(size: 11))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .opacity(blocker == nil ? 1 : 0.6)
+    }
+
+    private func run() {
+        let items = chosen.map { (row: $0, force: { if case .merged = BranchCleanup.safety($0) { return false } else { return true } }($0)) }
+        phase = .running
+        Task.detached(priority: .userInitiated) {
+            let outcome = BranchCleanup.remove(items)
+            await MainActor.run { phase = .done(outcome) }
+        }
+    }
+
+    private func done(_ o: RemoveOutcome) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: o.failed.isEmpty ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundStyle(o.failed.isEmpty ? Palette.ready : Palette.attention)
+                Text(o.removed.isEmpty ? "Nothing was removed" : o.removed.count == 1 ? "Removed 1 branch from your Mac" : "Removed \(o.removed.count) branches from your Mac")
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            if !o.failed.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("These were kept:").font(.system(size: 11.5, weight: .semibold))
+                    ForEach(Array(o.failed.enumerated()), id: \.offset) { _, f in
+                        Text("\(f.name): \(f.reason)").font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            if !o.removed.isEmpty {
+                Text("Changed your mind? Use Undo in the bar at the bottom of the window.").font(.system(size: 11.5)).foregroundStyle(.secondary)
+            }
+            HStack { Spacer(); Button("Done") { finish(o) }.buttonStyle(PillButtonStyle(tint: Palette.accent, filled: true)).keyboardShortcut(.defaultAction) }
+        }
     }
 }
