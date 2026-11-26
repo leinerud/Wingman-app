@@ -20,6 +20,11 @@ struct WingmanApp: App {
         .defaultSize(width: 720, height: 640)
         .defaultPosition(.topTrailing)
         .defaultLaunchBehavior(Prefs.hasSeenWelcome && Prefs.showInDock ? .presented : .suppressed)
+        .commands {
+            CommandGroup(after: .help) {
+                Button("Send Feedback…") { Feedback.open() }
+            }
+        }
 
         // First-launch splash: pick Dock and/or menu bar, and learn about the widget.
         Window("Welcome to Wingman", id: WelcomeView.windowID) {
@@ -153,7 +158,7 @@ struct MenuBarLabel: View {
             if store.activeCount > 0 { Text("\(store.activeCount)") }
         }
         .help(store.activeCount == 0 ? "Wingman: nothing running" : "Wingman: \(store.activeCount) \(store.activeCount == 1 ? "session" : "sessions") active")
-        .onAppear { animator.set(mode) }
+        .onAppear { animator.set(mode); Demo.openPanel() }
         .registersWindowOpener()
         .onChange(of: mode) { _, new in animator.set(new) }
         .onReceive(timer) { _ in

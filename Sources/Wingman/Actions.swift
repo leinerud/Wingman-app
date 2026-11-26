@@ -97,3 +97,17 @@ enum SessionActions {
         NSPasteboard.general.setString(s.id, forType: .string)
     }
 }
+
+/// Send Feedback… opens the feedback form on leinerud.se with the Wingman and macOS versions filled in.
+enum Feedback {
+    static func open() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        var url = URLComponents(string: "https://leinerud.se/wingman/feedback/")!
+        url.queryItems = [
+            URLQueryItem(name: "v", value: version),
+            URLQueryItem(name: "os", value: "macOS \(v.majorVersion).\(v.minorVersion)\(v.patchVersion > 0 ? ".\(v.patchVersion)" : "")"),
+        ]
+        if let link = url.url { Links.open(link) }
+    }
+}
