@@ -700,7 +700,7 @@ private struct BranchLine: View {
 
     /// The Copilot session that worked on this branch (its folder), else just the app.
     private func openInCopilot() {
-        SessionActions.openCopilot(workspace: row.folder, branch: row.name)
+        SessionActions.openCopilot(workspace: row.folder, branch: row.name, repo: row.repo.contains("/") ? row.repo : nil)
     }
     private func openApp(_ bundleID: String) {
         guard let dir = folderURL, let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
@@ -1207,7 +1207,7 @@ struct CleanupSheet: View {
                     ForEach(Array(o.failed.enumerated()), id: \.offset) { _, f in
                         VStack(alignment: .leading, spacing: 6) {
                             Text("\(f.name): \(f.reason)").font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                            if let path = o.workspaces[f.name] { WorkspaceLink(path: path) }
+                            if let path = o.workspaces[f.name] { WorkspaceLink(path: path, branch: f.name) }
                         }
                     }
                 }
@@ -1223,6 +1223,7 @@ struct CleanupSheet: View {
 /// Where the other workspace is, with ways to get there. Shown when a branch can't be removed because it is open there.
 private struct WorkspaceLink: View {
     let path: String
+    let branch: String
     @State private var copied = false
 
     private var url: URL { URL(fileURLWithPath: path) }
@@ -1246,7 +1247,7 @@ private struct WorkspaceLink: View {
                  : "Another folder on your Mac has this branch open. Switch that folder to another branch, then try again.")
                 .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if copilotApp != nil {
-                Button { SessionActions.openCopilot(workspace: path) } label: {
+                Button { SessionActions.openCopilot(workspace: path, branch: branch) } label: {
                     Label("Open in GitHub Copilot", systemImage: "sparkles")
                 }
                 .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: isCopilot))
