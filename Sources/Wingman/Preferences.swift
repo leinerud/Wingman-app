@@ -89,7 +89,7 @@ private struct PlacementCard: View {
         }
         .buttonStyle(.plain)
         .onHover { hover = $0 }
-        .help(locked ? "Keep at least one place on so you can reach Pajlot Assist" : "")
+        .help(locked ? "Keep at least one place on so you can reach Wingman" : "")
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
@@ -154,7 +154,7 @@ struct WidgetShowcase: View {
             VStack(alignment: .leading, spacing: 6) {
                 step(1, "Right-click your desktop")
                 step(2, "Choose Edit Widgets…")
-                step(3, "Search for Pajlot Assist")
+                step(3, "Search for Wingman")
             }
         }
     }
@@ -175,7 +175,7 @@ private struct MockWidget: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 3) {
                 Image(systemName: "sparkles").font(.system(size: 7, weight: .bold)).foregroundStyle(Palette.accent)
-                Text("Pajlot").font(.system(size: 7.5, weight: .semibold))
+                Text("Wingman").font(.system(size: 7.5, weight: .semibold))
             }
             if small {
                 Spacer(minLength: 0)
@@ -183,7 +183,7 @@ private struct MockWidget: View {
                 Text("need you").font(.system(size: 7.5, weight: .medium)).foregroundStyle(.secondary)
             } else {
                 row("Redesign onboarding", "Needs you", Palette.attention)
-                row("Fix dark mode colours", "Working", Palette.accent)
+                row("Fix dark mode colours", "Working", Palette.working)
                 row("Update README", "Done", Palette.ready)
             }
         }
@@ -208,17 +208,119 @@ private struct MockWidget: View {
     }
 }
 
+// MARK: - Which browser opens links
+
+/// Opens web links in the browser chosen in Settings, or the system default.
+enum Links {
+    static let key = "linkBrowser"    // bundle ID of the chosen browser; empty = system default
+
+    struct Browser: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let url: URL
+    }
+
+    private static let probe = URL(string: "https://example.com")!
+
+    /// Every installed app that can open web pages.
+    static func installed() -> [Browser] {
+        var seen = Set<String>(), out: [Browser] = []
+        for url in NSWorkspace.shared.urlsForApplications(toOpen: probe) {
+            guard let id = Bundle(url: url)?.bundleIdentifier, seen.insert(id.lowercased()).inserted else { continue }
+            out.append(Browser(id: id, name: FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""), url: url))
+        }
+        return out.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    static func systemDefault() -> Browser? {
+        guard let url = NSWorkspace.shared.urlForApplication(toOpen: probe), let id = Bundle(url: url)?.bundleIdentifier else { return nil }
+        return Browser(id: id, name: FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""), url: url)
+    }
+
+    static func open(_ url: URL) {
+        let id = UserDefaults.standard.string(forKey: key) ?? ""
+        if !id.isEmpty, url.scheme == "http" || url.scheme == "https",
+           let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
+            NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+        } else {
+            NSWorkspace.shared.open(url)   // the chosen browser is gone, or this isn't a web link
+        }
+    }
+}
+
+struct BrowserSettings: View {
+    @AppStorage(Links.key) private var choice = ""
+    @State private var browsers = Links.installed()
+    @State private var systemDefault = Links.systemDefault()
+
+    private func icon(_ url: URL) -> Image {
+        let img = NSWorkspace.shared.icon(forFile: url.path)
+        img.size = NSSize(width: 16, height: 16)
+        return Image(nsImage: img)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Links to GitHub and other web pages open in this browser. Files and folders still open in their usual apps.")
+                .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Picker("Open links in", selection: $choice) {
+                    Label { Text(systemDefault.map { "System default (\($0.name))" } ?? "System default") } icon: {
+                        if let d = systemDefault { icon(d.url) } else { Image(systemName: "globe") }
+                    }.tag("")
+                    Divider()
+                    ForEach(browsers) { b in
+                        Label { Text(b.name) } icon: { icon(b.url) }.tag(b.id)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 260)
+                .help("Choose which browser opens links from Wingman")
+                Button("Try it") { Links.open(URL(string: "https://github.com")!) }
+                    .help("Opens github.com in the browser you picked")
+            }
+        }
+        .onAppear {
+            browsers = Links.installed(); systemDefault = Links.systemDefault()
+            // A browser that has been uninstalled since would leave the picker empty.
+            if !choice.isEmpty, !browsers.contains(where: { $0.id == choice }) { choice = "" }
+        }
+    }
+}
+
 // MARK: - Settings
+
+/// Shows which folders Wingman may read, and lets you change them.
+struct AccessSettings: View {
+    @State private var copilot = Access.hasCopilotAccess
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Wingman reads your sessions and projects. It only changes something when you ask, such as removing a finished branch from your Mac. macOS needs your OK for each folder.")
+                .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Image(systemName: copilot ? "checkmark.circle.fill" : "exclamationmark.circle").foregroundStyle(copilot ? Palette.ready : Palette.attention)
+                Text(copilot ? "Copilot sessions (.copilot)" : "Copilot sessions: not allowed yet").font(.system(size: 12))
+                Spacer()
+                Button(copilot ? "Change…" : "Choose…") { Access.requestCopilotFolder(); copilot = Access.hasCopilotAccess }
+            }
+            Text("Project folders are requested the first time you open Review for a project.")
+                .font(.system(size: 11)).foregroundStyle(.tertiary)
+        }
+    }
+}
 
 struct SettingsView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            section("Where Pajlot Assist lives") { PlacementPicker() }
+            section("Where Wingman lives") { PlacementPicker() }
+            section("Open links in") { BrowserSettings() }
+            section("Access to your files") { AccessSettings() }
             section("Desktop widget") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("See your sessions right on the desktop, in a small, medium or large size. It updates while Pajlot Assist is running.")
+                    Text("See your sessions right on the desktop, in a small, medium or large size. It updates while Wingman is running.")
                         .font(.system(size: 11.5)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     WidgetShowcase()

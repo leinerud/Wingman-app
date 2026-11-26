@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import WidgetKit
+import Combine
 
 @MainActor
 final class SessionStore: ObservableObject {
@@ -8,6 +9,8 @@ final class SessionStore: ObservableObject {
     @Published private(set) var lastRefresh = Date()
     /// Set when a session goes from working to finished; drives the "done" icon until seen.
     @Published var doneAt: Date?
+    /// True while the sandbox hasn't been given the .copilot folder yet.
+    @Published private(set) var needsAccess = false
 
     private let home: String
     private var timer: Timer?
@@ -23,25 +26,50 @@ final class SessionStore: ObservableObject {
     private var loading = false
     private var refreshAgain = false
     private var ticks = 0
+    private var rawSessions: [CopilotSession] = []
+    private var metaSub: AnyCancellable?
+    private var accessSub: AnyCancellable?
 
     var activeCount: Int { sessions.filter(\.isActive).count }
     var needsInputCount: Int { sessions.filter { $0.status == .needsInput }.count }
 
     /// `home` is only overridden by tests; the app always reads the user's own ~/.copilot.
-    init(home: String = FileManager.default.homeDirectoryForCurrentUser.path) {
+    init(home: String = Access.realHome) {
         self.home = home
-        refresh(scan: true)
-        // React to Copilot writing to a session within a fraction of a second.
-        watcher = FolderWatcher(path: home + "/.copilot/session-state", latency: 0.25) { [weak self] paths in
-            MainActor.assumeIsolated { self?.filesChanged(paths) }
+        Access.restore()
+        needsAccess = !Access.canRead(home + "/.copilot/session-state")
+        // Names, pins and tags apply instantly, without waiting for the next reload.
+        metaSub = MetaStore.shared.$meta.dropFirst().sink { [weak self] _ in
+            DispatchQueue.main.async { self?.reapplyMeta() }
         }
+        accessSub = NotificationCenter.default.publisher(for: .accessChanged).sink { [weak self] _ in
+            DispatchQueue.main.async { self?.accessChanged() }
+        }
+        refresh(scan: true)
+        startWatching()
         // Fallback tick: keeps "x min ago" fresh and catches anything the watcher misses.
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
                 self.ticks += 1
+                self.drainWidgetActions()
                 self.refresh(scan: self.ticks % 20 == 0)
             }
+        }
+    }
+
+    /// Called after the user picks the .copilot folder.
+    func accessChanged() {
+        needsAccess = !Access.canRead(home + "/.copilot/session-state")
+        startWatching()
+        refresh(scan: true)
+    }
+
+    private func startWatching() {
+        watcher = nil
+        // React to Copilot writing to a session within a fraction of a second.
+        watcher = FolderWatcher(path: home + "/.copilot/session-state", latency: 0.25) { [weak self] paths in
+            MainActor.assumeIsolated { self?.filesChanged(paths) }
         }
     }
 
@@ -62,6 +90,10 @@ final class SessionStore: ObservableObject {
 
     /// Reloads all sessions off the main thread. Calls that arrive mid-load are coalesced into one follow-up.
     func refresh(scan: Bool = false) {
+        // Until the folder is allowed there is nothing to read (and nothing to log every few seconds).
+        let readable = home.isEmpty || Access.canRead(home + "/.copilot/session-state")
+        if needsAccess == readable { needsAccess = !readable }
+        if !readable { publishAccessNeeded(); return }
         if loading { refreshAgain = true; return }
         loading = true
         let home = home
@@ -75,7 +107,8 @@ final class SessionStore: ObservableObject {
                 self.cache = newCache
                 let before = Dictionary(uniqueKeysWithValues: self.sessions.map { ($0.id, $0.status) })
                 if result.contains(where: { before[$0.id] == .working && ($0.status == .idle || $0.status == .stopped) }) { self.doneAt = Date() }
-                self.sessions = result
+                self.rawSessions = result
+                self.sessions = Self.arranged(result.map(MetaStore.shared.apply))
                 self.publishToWidget()
                 self.lastRefresh = Date()
                 self.loading = false
@@ -84,19 +117,53 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    private func reapplyMeta() {
+        sessions = Self.arranged(rawSessions.map(MetaStore.shared.apply))
+        publishToWidget()
+    }
+
+    /// Pinned sessions first, otherwise Copilot's own order.
+    private static func arranged(_ list: [CopilotSession]) -> [CopilotSession] {
+        list.enumerated().sorted { a, b in
+            if a.element.pinned != b.element.pinned { return a.element.pinned }
+            return a.offset < b.offset
+        }.map(\.element)
+    }
+
+    /// Applies taps made on the desktop widget's pin buttons.
+    private func drainWidgetActions() {
+        let actions = WidgetActions.drain()
+        for id in actions.togglePin { MetaStore.shared.togglePin(id) }
+    }
+
     // MARK: - Widget
 
     private var lastWidgetSessions: [WidgetSnapshot.Session]?
+    private var lastWidgetSave = Date.distantPast
+    private var lastWidgetNeedsAccess = false
+
+    /// Tells the widget the app is alive but can't see any sessions yet.
+    private func publishAccessNeeded() {
+        guard !lastWidgetNeedsAccess else { return }
+        lastWidgetNeedsAccess = true
+        lastWidgetSessions = nil
+        if WidgetSnapshot(sessions: [], savedAt: Date(), needsAccess: true).save() {
+            WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshot.widgetKind)
+        }
+    }
 
     /// Hands the desktop widget a fresh summary, but only reloads it when something it shows changed.
     private func publishToWidget() {
-        let items = sessions.filter { $0.status != .stopped }.prefix(8).map {
+        let items = sessions.filter { $0.status != .stopped || $0.pinned }.prefix(8).map {
             WidgetSnapshot.Session(id: $0.id, title: $0.title, repo: $0.repoShortName, status: $0.status.rawValue,
                                    activity: $0.activity, question: $0.question,
-                                   done: $0.doneCount, total: $0.todos.count, updatedAt: $0.updatedAt)
+                                   done: $0.doneCount, total: $0.todos.count, updatedAt: $0.updatedAt, pinned: $0.pinned)
         }
-        guard items != lastWidgetSessions else { return }
+        // Also a heartbeat every 10 minutes, so the widget can tell "nothing changed" from "the app isn't running".
+        guard items != lastWidgetSessions || lastWidgetNeedsAccess || Date().timeIntervalSince(lastWidgetSave) > 600 else { return }
         lastWidgetSessions = items
+        lastWidgetNeedsAccess = false
+        lastWidgetSave = Date()
         if WidgetSnapshot(sessions: Array(items), savedAt: Date()).save() {
             WidgetCenter.shared.reloadTimelines(ofKind: WidgetSnapshot.widgetKind)
         }
@@ -206,7 +273,7 @@ final class SessionStore: ObservableObject {
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return false }
         for f in files where f.hasPrefix("inuse.") && f.hasSuffix(".lock") {
             let parts = f.split(separator: ".")
-            if parts.count == 3, let pid = Int32(parts[1]), kill(pid, 0) == 0 { return true }
+            if parts.count == 3, let pid = Int32(parts[1]), (kill(pid, 0) == 0 || errno == EPERM) { return true }   // EPERM: it exists, the sandbox just won't let us signal it
         }
         return false
     }

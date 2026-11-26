@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "PajlotAssist",
+    name: "Wingman",
     platforms: [.macOS(.v15)],
     targets: [
         .executableTarget(
-            name: "PajlotAssist",
-            path: "Sources/PajlotAssist",
+            name: "Wingman",
+            path: "Sources/Wingman",
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [.linkedLibrary("sqlite3")]
         )

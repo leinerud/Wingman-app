@@ -41,6 +41,10 @@ struct CopilotSession: Identifiable, Hashable {
     var lastMessage: String?      // latest thing Copilot said
     var question: String?         // set when Copilot is waiting for an answer
     var todos: [TodoItem]
+    /// Personal organisation, layered on top by `MetaStore` (never written to Copilot's data).
+    var pinned = false
+    var tag: TagColor = .none
+    var generatedTitle: String? = nil   // Copilot's own title, kept when you rename the session
 
     var doneCount: Int { todos.filter { $0.state == .done }.count }
     var progress: Double? { todos.isEmpty ? nil : Double(doneCount) / Double(todos.count) }
