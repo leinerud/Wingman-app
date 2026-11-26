@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import SwiftUI
 
 /// Made-up sessions, branches and changes for screenshots of the app, so they never show anyone's real work.
 /// Turn it on with a launch argument: `open Wingman.app --args -WingmanDemo YES`. Nothing is read from disk then.
@@ -28,6 +29,25 @@ enum Demo {
     static var reviewSession: String? { isOn ? UserDefaults.standard.string(forKey: "WingmanDemoReview") : nil }
     /// -WingmanDemoReviewTab Tokens (or Timeline) opens Review on that tab.
     static var reviewTab: String? { isOn ? UserDefaults.standard.string(forKey: "WingmanDemoReviewTab") : nil }
+
+    /// -WingmanDemoPanel YES shows the menu bar panel with its icon above it, in a transparent window titled
+    /// "Demo panel" to capture. The real status item can't be relied on: macOS may hide it behind the notch.
+    @MainActor private static var panelWindow: NSWindow?
+    @MainActor static func openPanel(_ store: SessionStore) {
+        guard isOn, UserDefaults.standard.bool(forKey: "WingmanDemoPanel"), panelWindow == nil else { return }
+        let view = DemoPanelShot().environmentObject(store)
+        let w = NSWindow(contentRect: NSRect(x: 300, y: 200, width: 500, height: 700), styleMask: .borderless,
+                         backing: .buffered, defer: false)
+        w.title = "Demo panel"
+        w.isOpaque = false
+        w.backgroundColor = .clear
+        w.hasShadow = false
+        w.isReleasedWhenClosed = false
+        w.contentView = NSHostingView(rootView: view)
+        w.setContentSize(w.contentView!.fittingSize)
+        w.orderFrontRegardless()
+        panelWindow = w
+    }
 
     // MARK: Sessions
 
@@ -184,5 +204,32 @@ enum Demo {
             if let t = row.topic { d.sessions = [.init(title: t, date: row.lastActive, closed: row.copilot == .closed)] }
         }
         return d
+    }
+}
+
+
+/// What -WingmanDemoPanel captures: the menu bar icon, highlighted as when it's clicked, and the panel below it.
+/// The top 24 points are left clear so compose.py can draw the menu bar behind the icon.
+private struct DemoPanelShot: View {
+    @EnvironmentObject var store: SessionStore
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            HStack(spacing: 3) {
+                Image(nsImage: MenuBarIcon.image(MenuBarIcon.pose(for: .needsInput, at: 10), description: "Wingman"))
+                    .renderingMode(.template)
+                if store.activeCount > 0 { Text("\(store.activeCount)").font(.system(size: 13, weight: .medium)) }
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .frame(height: 22)
+            .background(Capsule().fill(.white.opacity(0.22)))
+            .frame(height: 24)
+            .padding(.trailing, 150)
+            PopoverView()
+                .background(Color(nsColor: .windowBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.12)))
+        }
     }
 }
