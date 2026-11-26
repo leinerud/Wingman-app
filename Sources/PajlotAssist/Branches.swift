@@ -237,9 +237,11 @@ struct BranchesWindow: View {
     @AppStorage("branches.hideMain") private var hideMain = true
     @AppStorage("branches.filter") private var filterRaw = BranchFilter.all.rawValue
     @State private var query = ""
+    @State private var showGlossary = false
+    @AppStorage("branches.introDismissed") private var introDismissed = false
 
     enum BranchFilter: String, CaseIterable, Identifiable {
-        case working = "Working on", closeable = "Ready to close", all = "All"
+        case working = "In progress", closeable = "Ready to close", all = "All"
         var id: Self { self }
     }
     private var filter: BranchFilter { BranchFilter(rawValue: filterRaw) ?? .all }
@@ -290,6 +292,7 @@ struct BranchesWindow: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16, pinnedViews: []) {
+                        if !introDismissed { BranchIntro { withAnimation { introDismissed = true } } }
                         ForEach(shown, id: \.repo.id) { item in RepoSection(repo: item.repo, rows: item.rows, reload: model.refresh) }
                     }
                     .padding(18)
@@ -313,7 +316,13 @@ struct BranchesWindow: View {
             TextField("Search repos and branches", text: $query)
                 .textFieldStyle(.roundedBorder).font(.system(size: 12)).frame(width: 190)
             Toggle("Hide main", isOn: $hideMain).toggleStyle(.switch).controlSize(.mini)
-                .help("Hide main, master and Copilot's temporary prewarm branches (unless they have unsaved work)")
+                .help("Hide the main version itself and Copilot's temporary branches, unless they have unsaved work")
+            Button { showGlossary.toggle() } label: {
+                Image(systemName: "questionmark.circle").font(.system(size: 13)).foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("What do branches, main and merged mean?")
+            .popover(isPresented: $showGlossary, arrowEdge: .bottom) { BranchGlossary().padding(16).frame(width: 340) }
             IconButton(symbol: "arrow.clockwise", help: "Reload", shortcut: "r") { model.refresh() }
         }
         .padding(.horizontal, 18).padding(.vertical, 12)
@@ -347,9 +356,9 @@ struct BranchesWindow: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .help(f == .working ? "Branches with unsaved changes, a live Copilot session, checked out, or touched in the last 7 days"
-                      : f == .closeable ? "Branches already merged into main (or deleted on GitHub after merging). Safe to close."
-                      : "Everything")
+                .help(f == .working ? "Work you are in the middle of: unsaved changes, a Copilot session working on it, open on your Mac, or touched in the last 7 days"
+                      : f == .closeable ? "Work that is finished and already part of the main version. These can be closed to keep things tidy."
+                      : "Everything Copilot has worked on")
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
             Spacer()
@@ -360,7 +369,7 @@ struct BranchesWindow: View {
     private var summary: String {
         let repos = model.repos.count
         let branches = model.repos.reduce(0) { $0 + $1.branches.count }
-        return model.loadedOnce ? "\(branches) branches in \(repos) repositories from your Copilot sessions" : "Loading…"
+        return model.loadedOnce ? "\(branches) branches (separate versions of the work) in \(repos) projects" : "Loading…"
     }
 }
 
@@ -402,10 +411,10 @@ private struct RepoSection: View {
                     IconButton(symbol: "arrow.up.right.square", help: "Open on GitHub") { NSWorkspace.shared.open(url) }
                 }
             }
-            if !working.isEmpty { group("Working on", Palette.working, working, nil) }
-            if !other.isEmpty { group("Idle", Palette.muted, other, nil) }
+            if !working.isEmpty { group("In progress", Palette.working, working, nil) }
+            if !other.isEmpty { group("Paused", Palette.muted, other, nil) }
             if !closeable.isEmpty {
-                group("Merged · can be closed", Palette.ready, closeable) {
+                group("Done · safe to close", Palette.ready, closeable) {
                     Button {
                         let cmd = cleanupCommands()
                         guard !cmd.isEmpty else { return }
@@ -415,12 +424,12 @@ private struct RepoSection: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: copied ? "checkmark" : "terminal")
-                            Text(copied ? "Copied" : "Copy cleanup commands")
+                            Text(copied ? "Copied" : "Copy tidy-up commands")
                         }
                     }
                     .buttonStyle(PillButtonStyle(tint: Palette.ready, filled: false))
                     .disabled(cleanupCommands().isEmpty)
-                    .help("Copies a git command that deletes these \(closeable.count) merged branches (safe delete: git refuses if something isn't merged). Nothing is run for you. Paste it in Terminal when you are ready.")
+                    .help("Copies a command that removes these \(closeable.count) finished branches from your Mac. It refuses if anything isn't actually finished. Nothing is removed until you paste it into Terminal yourself.")
                 }
             }
         }
@@ -432,9 +441,13 @@ private struct RepoSection: View {
                 Circle().fill(tint).frame(width: 6, height: 6)
                 Text(title.uppercased()).font(.system(size: 10, weight: .bold)).tracking(0.6).foregroundStyle(tint)
                 Text("\(list.count)").font(.system(size: 10, weight: .medium).monospacedDigit()).foregroundStyle(.tertiary)
-                if title == "Idle" {
+                if title == "Paused" {
                     Image(systemName: "questionmark.circle").font(.system(size: 10)).foregroundStyle(.tertiary)
-                        .help("Not touched in the last 7 days, nothing unsaved, no live session, and not known to be merged. Old or unfinished work. Branches marked “Merge status unknown” need the project folder to be allowed.")
+                        .help("Nothing has happened here for a week, nothing is unsaved and no Copilot session is using it, and it isn't marked as finished. Old or unfinished work.")
+                }
+                if title == "Done · safe to close" {
+                    Image(systemName: "questionmark.circle").font(.system(size: 10)).foregroundStyle(.tertiary)
+                        .help("This work has already been added to the main version, so the separate copy isn't needed any more.")
                 }
                 Spacer()
                 trailing?()
@@ -447,7 +460,7 @@ private struct RepoSection: View {
                 }
             }
             .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.card))
-            .overlay(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).strokeBorder(tint.opacity(title == "Idle" ? 0 : 0.35)))
+            .overlay(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).strokeBorder(tint.opacity(title == "Paused" ? 0 : 0.35)))
             .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
         }
     }
@@ -488,11 +501,11 @@ private struct BranchLine: View {
     }
 
     @ViewBuilder private var actions: some View {
-        Button { if let u = branchURL { NSWorkspace.shared.open(u) } } label: { Label("Open branch on GitHub", systemImage: "arrow.up.right.square") }
+        Button { if let u = branchURL { NSWorkspace.shared.open(u) } } label: { Label("View on GitHub", systemImage: "arrow.up.right.square") }
             .disabled(branchURL == nil)
-        Button { if let u = pullsURL { NSWorkspace.shared.open(u) } } label: { Label("Show pull requests for this branch", systemImage: "arrow.triangle.pull") }
+        Button { if let u = pullsURL { NSWorkspace.shared.open(u) } } label: { Label("See review requests on GitHub", systemImage: "arrow.triangle.pull") }
             .disabled(pullsURL == nil)
-        Button { if let u = compareURL { NSWorkspace.shared.open(u) } } label: { Label("Compare or open a pull request on GitHub", systemImage: "arrow.left.arrow.right") }
+        Button { if let u = compareURL { NSWorkspace.shared.open(u) } } label: { Label("Compare with main or ask for a review", systemImage: "arrow.left.arrow.right") }
             .disabled(compareURL == nil)
         Divider()
         Button { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } } label: { Label("Show project folder in Finder", systemImage: "folder") }
@@ -505,14 +518,14 @@ private struct BranchLine: View {
             .disabled(folderURL == nil)
         Divider()
         if row.closeable, row.existsLocally == true, let f = row.folder {
-            Button { copy("git -C \"\(f)\" branch -d \(row.name)", label: "delete command") } label: { Label("Copy command to delete this branch (safe)", systemImage: "trash") }
+            Button { copy("git -C \"\(f)\" branch -d \(row.name)", label: "delete command") } label: { Label("Copy command to remove this branch (safe)", systemImage: "trash") }
             if row.upstream != nil, !row.remoteGone {
-                Button { copy("git -C \"\(f)\" push origin --delete \(row.name)", label: "delete command") } label: { Label("Copy command to delete it on GitHub too", systemImage: "trash.circle") }
+                Button { copy("git -C \"\(f)\" push origin --delete \(row.name)", label: "delete command") } label: { Label("Copy command to remove it on GitHub too", systemImage: "trash.circle") }
             }
             Divider()
         }
         Button { copy(row.name, label: "name") } label: { Label("Copy branch name", systemImage: "doc.on.doc") }
-        Button { copy("git -C \"\(row.folder ?? ".")\" switch \(row.name)", label: "command") } label: { Label("Copy command to switch to this branch", systemImage: "terminal.fill") }
+        Button { copy("git -C \"\(row.folder ?? ".")\" switch \(row.name)", label: "command") } label: { Label("Copy command to switch to this version", systemImage: "terminal.fill") }
             .disabled(row.folder == nil || row.existsLocally == false)
         Button { if let u = branchURL { copy(u.absoluteString, label: "link") } } label: { Label("Copy GitHub link", systemImage: "link") }
             .disabled(branchURL == nil)
@@ -525,20 +538,20 @@ private struct BranchLine: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(row.name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(row.closeable ? .secondary : .primary).lineLimit(1).truncationMode(.middle)
-                    if row.working { filledChip("Working on", Palette.working, "You have unsaved changes here, a Copilot session is using it, it is checked out, or it was touched in the last 7 days") }
+                    if row.working { filledChip("In progress", Palette.working, "You have unsaved changes here, a Copilot session is working on it, it is open on your Mac, or it was touched in the last 7 days") }
                     if row.closeable {
-                        if row.merged == true { filledChip("Merged · can be closed", Palette.ready, "Everything on this branch is already in \(row.defaultName ?? "main"). It can be closed and deleted.") }
-                        else { filledChip("Remote deleted · probably merged", Palette.ready, "The branch was removed on GitHub, which usually happens when a pull request is merged. It may have been squashed, so git can't prove it. Check before deleting.") }
+                        if row.merged == true { filledChip("Done · safe to close", Palette.ready, "Everything on this branch has already been added to the main version. The separate copy can be closed.") }
+                        else { filledChip("Done · removed on GitHub", Palette.ready, "This branch was removed on GitHub, which usually means the work was reviewed and added to the main version. The app can't prove it, so check before removing it from your Mac.") }
                     }
-                    if row.isCurrent { chip("Checked out", Palette.working, "This branch is open in the project folder right now") }
-                    if let a = row.ahead, a > 0, !row.closeable { chip("\(a) not in \(row.defaultName?.replacingOccurrences(of: "origin/", with: "") ?? "main")", Palette.muted, "\(a) commits on this branch are not in main yet") }
-                    if row.dirty > 0 { chip("\(row.dirty) unsaved", Palette.attention, "\(row.dirty) files have changes that aren't saved as a version yet") }
-                    if let t = row.track, !t.isEmpty, t != "gone" { chip(t, Palette.attention, "Compared with the same branch on GitHub") }
-                    if row.existsLocally == true, row.upstream == nil, row.upstreamKnown { chip("Not pushed", Palette.attention, "This branch only exists on your Mac. It has not been sent to GitHub") }
+                    if row.isCurrent { chip("Open on your Mac", Palette.working, "This is the version currently open in the project folder on your Mac") }
+                    if let a = row.ahead, a > 0, !row.closeable { chip(a == 1 ? "1 change not in main yet" : "\(a) changes not in main yet", Palette.muted, "\(a) saved changes on this branch haven't been added to the main (finished) version yet") }
+                    if row.dirty > 0 { chip(row.dirty == 1 ? "1 unsaved file" : "\(row.dirty) unsaved files", Palette.attention, "\(row.dirty) files have edits that aren't saved as a version yet. They exist only on your Mac.") }
+                    if let t = row.track, !t.isEmpty, t != "gone", let plain = Self.plainTrack(t) { chip(plain.text, Palette.attention, plain.help) }
+                    if row.existsLocally == true, row.upstream == nil, row.upstreamKnown { chip("Only on your Mac", Palette.attention, "This branch hasn't been sent to GitHub, so nobody else can see it and it isn't backed up") }
                     if row.merged == nil, !row.isDefault, row.existsLocally != false {
-                        chip("Merge status unknown", Palette.muted, "The app can't compare this branch with main. Click “Show local details…” on the repository and allow its folder.")
+                        chip("Can't tell if it's done", Palette.muted, "The app can't compare this branch with the main version yet. Click “Show local details…” on the project and allow its folder.")
                     }
-                    if row.existsLocally == false { chip("Not on this Mac", Palette.muted, "Copilot used this branch, but it is gone from the project folder (often a temporary workspace that was cleaned up)") }
+                    if row.existsLocally == false { chip("Not on this Mac", Palette.muted, "Copilot worked on this, but it is gone from your project folder. Often a temporary workspace that was cleaned up.") }
                 }
                 HStack(spacing: 5) {
                     if let c = copied { Text("Copied \(c)").foregroundStyle(Palette.ready) }
@@ -550,16 +563,16 @@ private struct BranchLine: View {
             }
             Spacer(minLength: 6)
             HStack(spacing: 0) {
-                IconButton(symbol: "arrow.up.right.square", help: "Open this branch on GitHub") { if let u = branchURL { NSWorkspace.shared.open(u) } }
+                IconButton(symbol: "arrow.up.right.square", help: "View this branch on GitHub") { if let u = branchURL { NSWorkspace.shared.open(u) } }
                     .disabled(branchURL == nil)
                 IconButton(symbol: "folder", help: "Show the project folder in Finder") { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } }
                     .disabled(folderURL == nil)
-                IconButton(symbol: "doc.on.doc", help: "Copy the branch name") { copy(row.name, label: "name") }
+                IconButton(symbol: "doc.on.doc", help: "Copy the name of this branch") { copy(row.name, label: "name") }
                 Menu { actions } label: {
                     Image(systemName: "ellipsis").font(.system(size: 11.5, weight: .semibold))
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 26, height: 26)
-                .help("More actions: pull requests, compare, open in GitHub Copilot, VS Code or Terminal, copy a switch command. Right-click the row for the same menu.")
+                .help("More actions: review requests, compare with main, open in GitHub Copilot, VS Code or Terminal, copy commands. Right-click the row for the same menu.")
             }.opacity(hover ? 1 : 0.45)
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
@@ -576,6 +589,24 @@ private struct BranchLine: View {
         .accessibilityAction(named: "Copy branch name") { copy(row.name, label: "name") }
     }
 
+    /// "ahead 2, behind 1" in words a designer can use.
+    static func plainTrack(_ t: String) -> (text: String, help: String)? {
+        func num(_ word: String) -> Int? {
+            guard let r = t.range(of: word + " ") else { return nil }
+            return Int(t[r.upperBound...].prefix { $0.isNumber })
+        }
+        var parts: [String] = [], helps: [String] = []
+        if let a = num("ahead") {
+            parts.append(a == 1 ? "1 not on GitHub yet" : "\(a) not on GitHub yet")
+            helps.append("\(a) saved changes on your Mac haven't been sent to GitHub yet.")
+        }
+        if let b = num("behind") {
+            parts.append(b == 1 ? "1 new on GitHub" : "\(b) new on GitHub")
+            helps.append("\(b) changes on GitHub aren't on your Mac yet.")
+        }
+        return parts.isEmpty ? nil : (parts.joined(separator: " · "), helps.joined(separator: " "))
+    }
+
     private func filledChip(_ text: String, _ tint: Color, _ help: String) -> some View {
         Text(text).font(.system(size: 9.5, weight: .bold)).foregroundStyle(.white)
             .padding(.horizontal, 7).frame(height: 17).background(Capsule().fill(tint))
@@ -586,5 +617,58 @@ private struct BranchLine: View {
         Text(text).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(tint)
             .padding(.horizontal, 6).frame(height: 16).background(Capsule().fill(tint.opacity(0.13)))
             .help(help)
+    }
+}
+
+
+// MARK: - Plain-language help
+
+/// What the words in this window mean, for people who don't live in git.
+struct BranchGlossary: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("The words in this window").font(.system(size: 13, weight: .semibold))
+            item("Branch", "A separate copy of the project where changes can be made safely, without touching the finished version. Copilot makes one for each task.")
+            item("Main", "The finished, shared version of the project. Everyone builds on it.")
+            item("Done · safe to close", "The work in this branch has been added to main. The separate copy isn't needed any more.")
+            item("In progress", "You or Copilot are working on it: unsaved edits, a session running, or touched in the last week.")
+            item("Paused", "Nothing has happened for a while and it isn't finished. It might be forgotten or waiting.")
+            item("Unsaved", "Edits that only exist on your Mac and aren't saved as a version yet.")
+            item("Only on your Mac", "Not sent to GitHub, so nobody else can see it and it isn't backed up.")
+        }
+    }
+    private func item(_ term: String, _ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(term).font(.system(size: 12, weight: .semibold))
+            Text(text).font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// Shown on top until dismissed.
+private struct BranchIntro: View {
+    let dismiss: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "lightbulb").foregroundStyle(Palette.working)
+                Text("New to branches?").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Button("Got it", action: dismiss).buttonStyle(PillButtonStyle(tint: Palette.accent, filled: false))
+            }
+            Text("Each Copilot task works in its own copy of the project, called a branch, so your finished version (“main”) stays safe. When the work is approved it gets added to main, and the copy can be closed. This window shows which copies you are working on and which are done.")
+                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 14) {
+                legend(Palette.working, "In progress: you're working on it")
+                legend(Palette.ready, "Done: safe to close")
+                legend(Palette.muted, "Paused: quiet for a week")
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.working.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).strokeBorder(Palette.working.opacity(0.25)))
+    }
+    private func legend(_ tint: Color, _ text: String) -> some View {
+        HStack(spacing: 5) { Circle().fill(tint).frame(width: 7, height: 7); Text(text).font(.system(size: 11)).foregroundStyle(.secondary) }
     }
 }
