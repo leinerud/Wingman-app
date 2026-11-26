@@ -113,65 +113,127 @@ enum BranchDetailsLoader {
     }
 }
 
-/// The expanded "What's in it" part of a branch row.
+// MARK: - Plain language
+
+/// Turns developer wording into something a designer can read at a glance.
+enum PlainWords {
+    /// "feat(ux): add prototype links" -> "Add prototype links"; "chore(deps): bump x" -> "Updated dependencies".
+    static func change(_ raw: String) -> String {
+        var t = raw.trimmingCharacters(in: .whitespaces)
+        var type = ""
+        if let colon = t.firstIndex(of: ":"), t.distance(from: t.startIndex, to: colon) <= 24 {
+            let head = t[..<colon]
+            if head.range(of: #"^[a-zA-Z]+(\([^)]*\))?!?$"#, options: .regularExpression) != nil {
+                type = String(head.prefix { $0.isLetter }).lowercased()
+                t = t[t.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            }
+        }
+        if type == "chore" && (raw.contains("(deps") || t.lowercased().hasPrefix("bump")) { return "Updated libraries the project uses" }
+        if type == "revert" || t.lowercased().hasPrefix("revert") {
+            t = t.replacingOccurrences(of: #"^[Rr]evert:?\s*"?"#, with: "", options: .regularExpression)
+            return "Undid: " + t.trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+        }
+        if t.lowercased().hasPrefix("merge ") { return "Brought in changes from another branch" }
+        t = t.replacingOccurrences(of: #"\s*\(#\d+\)$"#, with: "", options: .regularExpression)
+        return t.prefix(1).uppercased() + t.dropFirst()
+    }
+
+    enum Area: Int, CaseIterable {
+        case pages, components, layouts, styles, images, text, tests, setup, code
+        var title: String {
+            switch self {
+            case .pages: "Pages and screens"; case .components: "Components"; case .layouts: "Layouts"
+            case .styles: "Styles and tokens"; case .images: "Images and assets"; case .text: "Text and docs"
+            case .tests: "Tests"; case .setup: "Project setup"; case .code: "Other code"
+            }
+        }
+        var symbol: String {
+            switch self {
+            case .pages: "rectangle.on.rectangle"; case .components: "square.on.square"; case .layouts: "rectangle.3.group"
+            case .styles: "paintpalette"; case .images: "photo"; case .text: "text.alignleft"
+            case .tests: "checkmark.seal"; case .setup: "gearshape"; case .code: "chevron.left.forwardslash.chevron.right"
+            }
+        }
+    }
+
+    static func area(_ path: String) -> Area {
+        let p = "/" + path.lowercased()
+        let name = (p as NSString).lastPathComponent
+        let ext = (name as NSString).pathExtension
+        if name.contains(".test.") || name.contains(".spec.") || p.contains("/__tests__/") || p.contains("/tests/") { return .tests }
+        if ["png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "woff", "woff2", "ttf", "otf", "mp4", "pdf"].contains(ext) { return .images }
+        if ["css", "scss", "sass", "less"].contains(ext) || p.contains("token") || p.contains("/theme") || p.contains("/styles/") { return .styles }
+        if ["md", "mdx", "txt"].contains(ext) || p.contains("/content/") || p.contains("/docs/") { return .text }
+        if p.contains("/pages/") || p.contains("/screens/") || p.contains("/views/") || p.contains("/routes/") || p.contains("/app/") { return .pages }
+        if p.contains("/components/") || p.contains("/ui/") { return .components }
+        if p.contains("/layouts/") || p.contains("/layout/") { return .layouts }
+        if ["json", "yml", "yaml", "lock", "toml", "env", "plist", "xcconfig"].contains(ext) || name.hasPrefix(".") || name.contains("config") { return .setup }
+        return .code
+    }
+
+    /// "src/pages/AiToolsGuide.tsx" -> "Ai Tools Guide"; "src/components/index.ts" -> "Components (index)".
+    static func name(_ path: String) -> String {
+        let file = (path as NSString).lastPathComponent
+        var base = file
+        while !(base as NSString).pathExtension.isEmpty { base = (base as NSString).deletingPathExtension }
+        if ["index", "skill", "readme"].contains(base.lowercased()) {
+            let folder = ((path as NSString).deletingLastPathComponent as NSString).lastPathComponent
+            if !folder.isEmpty { return words(folder) + " (" + base.lowercased() + ")" }
+        }
+        return words(base)
+    }
+
+    private static func words(_ s: String) -> String {
+        var out = ""
+        var prev: Character?
+        for c in s {
+            if c == "-" || c == "_" || c == "." { out.append(" "); prev = " "; continue }
+            if let p = prev, c.isUppercase, p.isLowercase || p.isNumber { out.append(" ") }
+            out.append(c); prev = c
+        }
+        let t = out.split(separator: " ").joined(separator: " ")
+        return t.prefix(1).uppercased() + t.dropFirst()
+    }
+
+    static func size(files: Int, lines: Int) -> String {
+        let kind = lines == 0 ? (files <= 3 ? "Small" : "Medium") : lines < 60 ? "Small" : lines < 400 ? "Medium" : "Large"
+        let filePart = files == 1 ? "1 file" : "\(files) files"
+        return lines > 0 ? "\(kind) change · \(filePart) · about \(lines) lines" : "\(kind) change · \(filePart)"
+    }
+}
+
+/// The expanded "What's in it" part of a branch row, in plain language with the technical list one click away.
 struct BranchDetailsPanel: View {
     let row: BranchRow
     @State private var details: BranchDetails?
+    @State private var showTechnical = false
+
+    /// The work counts as being in main when git or GitHub says so, even if a squash merge hides the exact versions.
+    private var inMain: Bool { row.merged == true || row.remoteGone }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             if let d = details {
                 if d.isEmpty && !d.readGit {
-                    Text("This branch isn't on your Mac, and no Copilot session is linked to it.")
-                        .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                    Text("This branch isn't on your Mac, and no Copilot chat is linked to it.").font(.system(size: 12)).foregroundStyle(.secondary)
                 }
-                if !d.changes.isEmpty {
-                    section("Saved changes not in main yet", count: d.changes.count + d.moreChanges, symbol: "clock.arrow.circlepath") {
-                        ForEach(d.changes) { changeLine($0) }
-                        more(d.moreChanges, "change")
-                    }
-                } else if d.readGit && d.latest.isEmpty && !row.isDefault {
-                    Label("No saved changes of its own yet", systemImage: "circle.dashed")
-                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                } else if !d.latest.isEmpty {
-                    section(row.isDefault ? "Latest changes" : "Already in main. Its last changes were", count: nil, symbol: "checkmark.circle") {
-                        ForEach(d.latest) { changeLine($0) }
-                    }
-                }
-                if !d.files.isEmpty {
-                    section("Files changed compared with main", count: d.files.count + d.moreFiles, symbol: "doc.on.doc",
-                            trailing: d.added + d.removed > 0 ? "+\(d.added) −\(d.removed) lines" : nil) {
-                        ForEach(d.files) { fileLine($0) }
-                        more(d.moreFiles, "file")
-                    }
-                }
+                status(d)
+                whatItDid(d)
+                touched(d.files, title: "What it touched", trailing: d.files.isEmpty ? nil : PlainWords.size(files: d.files.count + d.moreFiles, lines: d.added + d.removed))
                 if !d.unsaved.isEmpty {
-                    section("Unsaved on your Mac", count: d.unsaved.count + d.moreUnsaved, symbol: "pencil", tint: Palette.attention) {
-                        ForEach(d.unsaved) { fileLine($0) }
-                        more(d.moreUnsaved, "file")
-                    }
+                    touched(d.unsaved, title: "Edited on your Mac, not saved yet", trailing: "\(d.unsaved.count + d.moreUnsaved) files", tint: Palette.attention)
                 }
-                if !d.sessions.isEmpty {
-                    section("Copilot sessions on this branch", count: d.sessions.count, symbol: "sparkles") {
-                        ForEach(d.sessions) { s in
-                            HStack(spacing: 6) {
-                                Text(s.title).lineLimit(1).truncationMode(.tail)
-                                if s.closed { Text("closed").font(.system(size: 10)).foregroundStyle(.tertiary) }
-                                Spacer(minLength: 6)
-                                if let date = s.date { Text(date, format: .relative(presentation: .named, unitsStyle: .abbreviated)).foregroundStyle(.tertiary).fixedSize() }
-                            }
-                        }
-                    }
-                }
+                chats(d)
+                if !d.changes.isEmpty || !d.latest.isEmpty || !d.files.isEmpty || !d.unsaved.isEmpty { technical(d) }
                 if !d.readGit, row.existsLocally != false {
-                    Text("Allow the project folder to see saved changes and files.").font(.system(size: 11)).foregroundStyle(.tertiary)
+                    Text("Allow the project folder to see what changed.").font(.system(size: 11)).foregroundStyle(.tertiary)
                 }
             } else {
-                HStack(spacing: 6) { ProgressView().controlSize(.mini); Text("Looking…").font(.system(size: 11)).foregroundStyle(.secondary) }
+                HStack(spacing: 6) { ProgressView().controlSize(.mini); Text("Looking…").font(.system(size: 11.5)).foregroundStyle(.secondary) }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(14)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.well.opacity(0.55)))
         .task(id: row.id) {
             let r = row
@@ -179,44 +241,137 @@ struct BranchDetailsPanel: View {
         }
     }
 
-    private func section<C: View>(_ title: String, count: Int?, symbol: String, tint: Color = .secondary, trailing: String? = nil,
-                                  @ViewBuilder content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(tint)
-                Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                if let count { Text("\(count)").font(.system(size: 11).monospacedDigit()).foregroundStyle(.tertiary) }
-                Spacer(minLength: 6)
-                if let trailing { Text(trailing).font(.system(size: 10.5).monospacedDigit()).foregroundStyle(.tertiary) }
+    // MARK: Parts
+
+    /// One line that says where the work stands.
+    @ViewBuilder private func status(_ d: BranchDetails) -> some View {
+        let n = d.changes.count + d.moreChanges
+        let (text, symbol, tint): (String, String, Color) =
+            row.isDefault ? ("This is the main version itself.", "star", Palette.muted)
+            : inMain ? ("This work is in main.", "checkmark.circle.fill", Palette.ready)
+            : n > 0 ? (n == 1 ? "1 saved change that isn't in main yet." : "\(n) saved changes that aren't in main yet.", "clock", Palette.working)
+            : d.readGit ? ("Nothing saved on this branch yet.", "circle.dashed", Palette.muted)
+            : ("", "", .clear)
+        if !text.isEmpty {
+            Label { Text(text).font(.system(size: 12.5, weight: .semibold)) } icon: { Image(systemName: symbol).foregroundStyle(tint) }
+        }
+    }
+
+    /// The saved changes as plain sentences; falls back to what the Copilot chats were about.
+    @ViewBuilder private func whatItDid(_ d: BranchDetails) -> some View {
+        let source = d.changes.isEmpty ? d.latest : d.changes
+        var seen = Set<String>()
+        let lines = source.map { PlainWords.change($0.title) }.filter { seen.insert($0.lowercased()).inserted }
+        if !lines.isEmpty {
+            block(row.isDefault ? "Latest changes" : "What it did") {
+                ForEach(Array(lines.prefix(5).enumerated()), id: \.offset) { _, l in
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Circle().fill(Color.secondary.opacity(0.5)).frame(width: 4, height: 4).alignmentGuide(.firstTextBaseline) { $0[.bottom] + 3 }
+                        Text(l).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if lines.count > 5 { Text("and \(lines.count - 5) more").foregroundStyle(.tertiary) }
             }
-            VStack(alignment: .leading, spacing: 3) { content() }
-                .font(.system(size: 11.5))
-                .padding(.leading, 15)
         }
     }
 
-    private func changeLine(_ c: BranchDetails.Change) -> some View {
-        HStack(spacing: 6) {
-            Text(c.title).lineLimit(1).truncationMode(.tail).textSelection(.enabled)
-            Spacer(minLength: 6)
-            if let d = c.date { Text(d, format: .relative(presentation: .named, unitsStyle: .abbreviated)).foregroundStyle(.tertiary).fixedSize() }
+    /// Files grouped by what they are for a designer: pages, components, styles and so on.
+    @ViewBuilder private func touched(_ files: [BranchDetails.File], title: String, trailing: String?, tint: Color = .secondary) -> some View {
+        if !files.isEmpty {
+            let groups = Dictionary(grouping: files) { PlainWords.area($0.path) }
+            block(title, trailing: trailing, tint: tint) {
+                ForEach(PlainWords.Area.allCases.filter { groups[$0] != nil }, id: \.rawValue) { area in
+                    let items = groups[area] ?? []
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Label(area.title, systemImage: area.symbol)
+                            .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                            .frame(width: 140, alignment: .leading)
+                        Text(names(items)).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
         }
     }
 
-    private func fileLine(_ f: BranchDetails.File) -> some View {
-        let tint: Color = f.kind == "removed" ? Palette.attention : f.kind == "added" || f.kind == "new" ? Palette.ready : .secondary
-        let name = (f.path as NSString).lastPathComponent
-        let dir = (f.path as NSString).deletingLastPathComponent
-        return HStack(spacing: 6) {
-            Text(f.kind).font(.system(size: 10, weight: .medium)).foregroundStyle(tint).frame(width: 52, alignment: .leading)
-            Text(name).lineLimit(1)
-            if !dir.isEmpty { Text(dir).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head) }
-            Spacer(minLength: 0)
+    private func names(_ files: [BranchDetails.File]) -> AttributedString {
+        var out = AttributedString()
+        for (i, f) in files.prefix(6).enumerated() {
+            if i > 0 { out += AttributedString(", ") }
+            out += AttributedString(PlainWords.name(f.path))
+            if f.kind == "added" || f.kind == "new" || f.kind == "removed" {
+                var tag = AttributedString(f.kind == "removed" ? " (removed)" : " (new)")
+                tag.foregroundColor = f.kind == "removed" ? Palette.attention : Palette.ready
+                out += tag
+            }
         }
-        .help(f.path)
+        if files.count > 6 {
+            var more = AttributedString(" and \(files.count - 6) more")
+            more.foregroundColor = .secondary
+            out += more
+        }
+        return out
     }
 
-    @ViewBuilder private func more(_ n: Int, _ noun: String) -> some View {
-        if n > 0 { Text("and \(n) more \(n == 1 ? noun : noun + "s")").foregroundStyle(.tertiary) }
+    @ViewBuilder private func chats(_ d: BranchDetails) -> some View {
+        if !d.sessions.isEmpty {
+            block(d.sessions.count == 1 ? "Worked on in 1 Copilot chat" : "Worked on in \(d.sessions.count) Copilot chats") {
+                ForEach(d.sessions) { s in
+                    HStack(spacing: 6) {
+                        Image(systemName: "bubble.left").font(.system(size: 9)).foregroundStyle(.tertiary)
+                        Text(PlainWords.change(s.title)).lineLimit(1).truncationMode(.tail)
+                        if s.closed { Text("closed").font(.system(size: 10)).foregroundStyle(.tertiary) }
+                        Spacer(minLength: 6)
+                        if let date = s.date { Text(date, format: .relative(presentation: .named, unitsStyle: .abbreviated)).foregroundStyle(.tertiary).fixedSize() }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The original lists (version messages and file paths), for when you need the exact details.
+    private func technical(_ d: BranchDetails) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { withAnimation(.snappy(duration: 0.2)) { showTechnical.toggle() } } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).rotationEffect(.degrees(showTechnical ? 90 : 0))
+                    Text("Show files and versions")
+                }
+                .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("The exact saved versions and file paths, as git lists them")
+            if showTechnical {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(d.changes.isEmpty ? d.latest : d.changes) { c in
+                        HStack(spacing: 6) {
+                            Text(c.title).lineLimit(1).textSelection(.enabled)
+                            Spacer(minLength: 6)
+                            if let date = c.date { Text(date, format: .relative(presentation: .named, unitsStyle: .abbreviated)).foregroundStyle(.tertiary).fixedSize() }
+                        }
+                    }
+                    if !(d.changes.isEmpty && d.latest.isEmpty) { Divider().opacity(0.4).padding(.vertical, 3) }
+                    ForEach(d.files + d.unsaved) { f in
+                        HStack(spacing: 6) {
+                            Text(f.kind).foregroundStyle(.tertiary).frame(width: 52, alignment: .leading)
+                            Text(f.path).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                        }
+                    }
+                }
+                .font(.system(size: 10.5, design: .monospaced))
+                .padding(.leading, 12)
+            }
+        }
+    }
+
+    private func block<C: View>(_ title: String, trailing: String? = nil, tint: Color = .secondary, @ViewBuilder content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(tint)
+                Spacer(minLength: 6)
+                if let trailing { Text(trailing).font(.system(size: 10.5)).foregroundStyle(.tertiary) }
+            }
+            VStack(alignment: .leading, spacing: 4) { content() }
+                .font(.system(size: 12))
+        }
     }
 }
