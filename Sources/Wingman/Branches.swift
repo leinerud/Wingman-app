@@ -392,6 +392,9 @@ struct BranchesWindow: View {
     @AppStorage("branches.introDismissed") private var introDismissed = false
     @Namespace private var filterNS
 
+    /// A search the menu bar panel hands over when you click a branch there.
+    static let pendingQueryKey = "branches.pendingQuery"
+
     enum BranchFilter: String, CaseIterable, Identifiable {
         case working = "In progress", closeable = "Ready to close", all = "All"
         var id: Self { self }
@@ -457,7 +460,8 @@ struct BranchesWindow: View {
         .background(Palette.canvas)
         .searchable(text: $query, placement: .toolbar, prompt: "Search repos and branches")
         .toolbar { toolbarItems }
-        .onAppear { model.refresh() }
+        .onAppear { model.refresh(); takePendingQuery() }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in takePendingQuery() }
         .onChange(of: store.sessions.first?.updatedAt) { _, _ in model.refresh() }
         .sheet(item: $cleanup) { req in
             CleanupSheet(request: req) { outcome in
@@ -513,6 +517,13 @@ struct BranchesWindow: View {
                 .keyboardShortcut("r")
                 .help("Reload")
         }
+    }
+
+    private func takePendingQuery() {
+        let d = UserDefaults.standard
+        guard let q = d.string(forKey: Self.pendingQueryKey) else { return }
+        d.removeObject(forKey: Self.pendingQueryKey)
+        query = q
     }
 
     private func undo() {
