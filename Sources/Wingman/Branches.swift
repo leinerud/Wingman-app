@@ -714,6 +714,7 @@ private struct BranchLine: View {
     var allowFolder: () -> Void = {}
     @State private var hover = false
     @State private var copied: String?
+    @State private var showDetails = false
 
     private var folderURL: URL? {
         guard let f = row.folder, FileManager.default.fileExists(atPath: f) else { return nil }
@@ -826,6 +827,7 @@ private struct BranchLine: View {
                         if let d = row.lastActive { Text(d, format: .relative(presentation: .named, unitsStyle: .abbreviated)) }
                         if row.sessions > 0 { Text("· \(row.sessions) \(row.sessions == 1 ? "session" : "sessions")") }
                     }
+                    detailsToggle.padding(.leading, 4)
                 }.font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 6)
@@ -852,6 +854,11 @@ private struct BranchLine: View {
             }.opacity(hover ? 1 : 0)
         }
         adviceBox
+        if showDetails {
+            BranchDetailsPanel(row: row)
+                .padding(.leading, 34)
+                .transition(.opacity)
+        }
         }
         .padding(.horizontal, 12).padding(.vertical, 11)
         .background(Palette.well.opacity(hover ? 0.45 : 0))
@@ -862,6 +869,23 @@ private struct BranchLine: View {
         .accessibilityElement(children: .combine)
         .accessibilityAction(named: "Open on GitHub") { if linkable, let u = branchURL { Links.open(u) } }
         .accessibilityAction(named: "Copy branch name") { copy(row.name, label: "name") }
+    }
+
+    /// Opens "What's in it": saved changes, files, unsaved edits and Copilot sessions for this branch.
+    private var detailsToggle: some View {
+        Button { withAnimation(.snappy(duration: 0.25)) { showDetails.toggle() } } label: {
+            HStack(spacing: 4) {
+                Text("What's in it")
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).rotationEffect(.degrees(showDetails ? 180 : 0))
+            }
+            .font(.system(size: 10.5, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7).frame(height: 18)
+            .background(Capsule().fill(Palette.well.opacity(hover || showDetails ? 1 : 0.6)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(showDetails ? "Hide what's in this branch" : "See what has been done on this branch: saved changes, files, unsaved edits and Copilot sessions")
     }
 
     /// "ahead 2, behind 1" in words a designer can use.
