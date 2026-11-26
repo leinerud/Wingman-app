@@ -3,11 +3,11 @@ import SwiftUI
 import AppIntents
 
 @main
-struct PajlotWidgetBundle: WidgetBundle {
-    var body: some Widget { PajlotSessionsWidget() }
+struct WingmanWidgetBundle: WidgetBundle {
+    var body: some Widget { WingmanSessionsWidget() }
 }
 
-struct PajlotSessionsWidget: Widget {
+struct WingmanSessionsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: WidgetSnapshot.widgetKind, provider: Provider()) { entry in
             WidgetView(entry: entry)

@@ -1029,8 +1029,7 @@ enum BranchCleanup {
 
     // A small log so removed branches can always be found again (also in git's own history).
     private nonisolated static var logURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("PajlotAssist/removed-branches.json")
+        AppFolders.support.appendingPathComponent("removed-branches.json")
     }
     private nonisolated static func record(_ items: [RemovedBranch]) {
         guard !items.isEmpty else { return }

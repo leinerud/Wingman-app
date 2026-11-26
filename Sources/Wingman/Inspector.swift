@@ -7,7 +7,7 @@ import SwiftUI
 
 enum Git {
     /// Real git binaries are preferred over /usr/bin/git, which is a shim that can't run inside the sandbox.
-    nonisolated static let executable: String? = ProcessInfo.processInfo.environment["PAJLOT_NO_GIT"] != nil ? nil : [
+    nonisolated static let executable: String? = ProcessInfo.processInfo.environment["WINGMAN_NO_GIT"] != nil ? nil : [
         "/Applications/Xcode.app/Contents/Developer/usr/bin/git",
         "/Library/Developer/CommandLineTools/usr/bin/git",
         "/opt/homebrew/bin/git",

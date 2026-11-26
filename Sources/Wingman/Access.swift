@@ -4,7 +4,7 @@ import AppKit
 /// Folder access for the sandboxed app. macOS only lets a sandboxed app read folders the user has chosen,
 /// so we ask once, remember the choice (a security-scoped bookmark) and reuse it on every launch.
 /// Outside the sandbox (e.g. a plain `swift build`) every folder is already readable and nothing is asked.
-extension Notification.Name { static let accessChanged = Notification.Name("PajlotAccessChanged") }
+extension Notification.Name { static let accessChanged = Notification.Name("WingmanAccessChanged") }
 
 enum Access {
     /// The real home folder. Inside the sandbox `NSHomeDirectory()` points at the app's private container instead.
@@ -135,4 +135,18 @@ struct CopilotAccessGuide: View {
             Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
         }
     }
+}
+
+// MARK: - App data folder
+
+enum AppFolders {
+    /// `Application Support/Wingman`. Folders and files created under the old name are moved over the first time.
+    nonisolated static let support: URL = {
+        let fm = FileManager.default
+        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let new = base.appendingPathComponent("Wingman", isDirectory: true)
+        let old = base.appendingPathComponent("PajlotAssist", isDirectory: true)
+        if !fm.fileExists(atPath: new.path), fm.fileExists(atPath: old.path) { try? fm.moveItem(at: old, to: new) }
+        return new
+    }()
 }

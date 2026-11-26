@@ -518,8 +518,7 @@ private struct PreviewTab: View {
     @State private var autoRefresh = true
 
     private var dir: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("PajlotAssist/Snapshots/\(session.id)", isDirectory: true)
+        AppFolders.support.appendingPathComponent("Snapshots/\(session.id)", isDirectory: true)
     }
     private var defaultsKey: String { "previewURL.\(session.id)" }
 

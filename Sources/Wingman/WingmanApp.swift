@@ -3,7 +3,7 @@ import AppKit
 import Combine
 
 @main
-struct PajlotAssistApp: App {
+struct WingmanApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = SessionStore()
     @AppStorage(Prefs.menuBar) private var showInMenuBar = true
