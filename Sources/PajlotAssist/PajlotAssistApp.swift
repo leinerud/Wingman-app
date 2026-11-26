@@ -28,6 +28,13 @@ struct PajlotAssistApp: App {
         .defaultPosition(.center)
         .defaultLaunchBehavior(Prefs.hasSeenWelcome ? .suppressed : .presented)
 
+        // Every repository and branch your Copilot sessions have used.
+        Window("Branches", id: BranchesWindowID.id) {
+            BranchesWindow().environmentObject(store)
+        }
+        .defaultSize(width: 640, height: 560)
+        .defaultLaunchBehavior(.suppressed)
+
         // "Review": what a session changed on screen, token check, timeline and live preview.
         WindowGroup("Review", id: InspectorWindowID.id, for: String.self) { $sessionID in
             InspectorWindow(sessionID: sessionID ?? "").environmentObject(store)
@@ -48,6 +55,7 @@ struct PajlotAssistApp: App {
 }
 
 enum InspectorWindowID { static let id = "inspector" }
+enum BranchesWindowID { static let id = "branches" }
 
 enum MainWindow {
     static let id = "main"

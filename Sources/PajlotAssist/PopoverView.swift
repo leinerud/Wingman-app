@@ -80,6 +80,7 @@ struct PopoverView: View {
     @State private var spin = 0.0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     /// In the Dock window the view stretches to whatever size the user drags the window to;
     /// in the menu bar popover it keeps its compact, content-sized shape.
     var resizable = false
@@ -275,6 +276,10 @@ struct PopoverView: View {
             IconButton(symbol: "arrow.clockwise", help: "Check for the latest updates", rotation: spin) {
                 withAnimation(.easeInOut(duration: 0.6)) { spin += 360 }
                 store.refresh()
+            }
+            IconButton(symbol: "arrow.triangle.branch", help: "Branches in all your Copilot repositories", shortcut: "b") {
+                openWindow(id: BranchesWindowID.id)
+                NSApp.activate()
             }
             IconButton(symbol: "gearshape", help: "Settings: Dock, menu bar and desktop widget", shortcut: ",") {
                 NSApp.activate()

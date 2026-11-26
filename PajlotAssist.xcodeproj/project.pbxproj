@@ -32,6 +32,7 @@
 		B201 /* WidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A201 /* WidgetIntents.swift */; };
 		B117 /* Access.swift in Sources */ = {isa = PBXBuildFile; fileRef = A117 /* Access.swift */; };
 		B120 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C020 /* PrivacyInfo.xcprivacy */; };
+		B118 /* Branches.swift in Sources */ = {isa = PBXBuildFile; fileRef = A118 /* Branches.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -88,6 +89,7 @@
 		A201 /* WidgetIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetIntents.swift; sourceTree = "<group>"; };
 		A117 /* Access.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Access.swift; sourceTree = "<group>"; };
 		C020 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A118 /* Branches.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Branches.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -136,6 +138,7 @@
 				A115 /* Inspector.swift */,
 				A116 /* InspectorViews.swift */,
 				A117 /* Access.swift */,
+				A118 /* Branches.swift */,
 			);
 			name = PajlotAssist;
 			path = Sources/PajlotAssist;
@@ -311,6 +314,7 @@
 				B115 /* Inspector.swift in Sources */,
 				B116 /* InspectorViews.swift in Sources */,
 				B117 /* Access.swift in Sources */,
+				B118 /* Branches.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
