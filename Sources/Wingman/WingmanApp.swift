@@ -23,9 +23,17 @@ struct WingmanApp: App {
         .commands {
             UpdateCommands()
             CommandGroup(after: .help) {
-                Button("Send Feedback…") { Feedback.open() }
+                SendFeedbackMenuItem()
             }
         }
+
+        // Send Feedback…: written here and sent straight to leinerud.se.
+        Window("Send Feedback", id: Feedback.windowID) {
+            FeedbackView()
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+        .defaultLaunchBehavior(.suppressed)
 
         // First-launch splash: pick Dock and/or menu bar, and learn about the widget.
         Window("Welcome to Wingman", id: WelcomeView.windowID) {
@@ -65,6 +73,15 @@ struct WingmanApp: App {
 }
 
 enum InspectorWindowID { static let id = "inspector" }
+
+/// Help › Send Feedback… (a view, so it can reach openWindow).
+private struct SendFeedbackMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("Send Feedback…") { Feedback.show(openWindow) }
+    }
+}
+
 enum SettingsWindowID { static let id = "settings" }
 
 /// The main window: Sessions and Branches, switched with a segmented control at the top.
@@ -119,6 +136,10 @@ private struct WindowOpenerRegistration: ViewModifier {
         content.onAppear {
             let open = openWindow
             MainWindow.open = { open(id: MainWindow.id); NSApp.activate() }
+            // For screenshots and testing: open Send Feedback at launch (`-WingmanFeedback YES`).
+            if UserDefaults.standard.bool(forKey: "WingmanFeedback") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { Feedback.show(open) }
+            }
         }
     }
 }
