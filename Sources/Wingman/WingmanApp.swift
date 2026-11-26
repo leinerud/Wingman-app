@@ -5,7 +5,8 @@ import Combine
 @main
 struct WingmanApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var store = SessionStore()
+    // With -WingmanDemo YES it shows made-up sessions instead of yours (Demo.swift), for screenshots.
+    @StateObject private var store = Demo.isOn ? SessionStore(preview: Demo.sessions) : SessionStore()
     @AppStorage(Prefs.menuBar) private var showInMenuBar = true
 
     var body: some Scene {
@@ -31,7 +32,7 @@ struct WingmanApp: App {
 
         // "Review": what a session changed on screen, token check, timeline and live preview.
         WindowGroup("Review", id: InspectorWindowID.id, for: String.self) { $sessionID in
-            InspectorWindow(sessionID: sessionID ?? "").environmentObject(store)
+            InspectorWindow(sessionID: sessionID ?? "").environmentObject(store).onAppear { Demo.fitWindows() }
         }
         .defaultSize(width: 780, height: 640)
 
@@ -67,6 +68,7 @@ struct MainWindowView: View {
         var id: Self { self }
     }
     @AppStorage(MainWindow.tabKey) private var tab: Tab = .sessions
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Group {
@@ -76,6 +78,10 @@ struct MainWindowView: View {
             }
         }
         .navigationTitle(tab.rawValue)
+        .onAppear {
+            Demo.fitWindows()
+            if let id = Demo.reviewSession { openWindow(id: InspectorWindowID.id, value: id) }
+        }
         .toolbar(removing: .title)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar {

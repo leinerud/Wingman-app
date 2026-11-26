@@ -129,6 +129,7 @@ private struct LocalRepo { var current: String?; var dirty = 0; var branches: [L
 
 enum BranchLoader {
     nonisolated static func load() -> [RepoBranches] {
+        if Demo.isOn { return Demo.repos }
         let rows = SQLiteReader.rows(path: Access.copilotPath + "/session-store.db",
                                      sql: "SELECT repository, branch, cwd, summary, updated_at FROM sessions ORDER BY updated_at DESC")
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -866,6 +867,7 @@ private struct BranchLine: View {
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .contextMenu { actions }
+        .onAppear { if Demo.opensDetails(row.name) { showDetails = true } }
         .accessibilityElement(children: .combine)
         .accessibilityAction(named: "Open on GitHub") { if linkable, let u = branchURL { Links.open(u) } }
         .accessibilityAction(named: "Copy branch name") { copy(row.name, label: "name") }

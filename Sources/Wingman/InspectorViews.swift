@@ -92,7 +92,10 @@ struct InspectorWindow: View {
         }
         .frame(minWidth: 620, minHeight: 480)
         .background(Palette.canvas)
-        .onAppear { if let s = session { model.load(cwd: s.cwd) } }
+        .onAppear {
+            if let s = session { model.load(cwd: s.cwd) }
+            if let t = Demo.reviewTab.flatMap(Tab.init(rawValue:)) { tab = t }
+        }
         // Follow along while the session keeps working.
         .onChange(of: session?.updatedAt) { _, _ in if let s = session { model.load(cwd: s.cwd) } }
         .navigationTitle(session?.title ?? "Review")

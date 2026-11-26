@@ -25,6 +25,7 @@ struct BranchDetails {
 
 enum BranchDetailsLoader {
     nonisolated static func load(_ row: BranchRow) -> BranchDetails {
+        if Demo.isOn { return Demo.details(row) }
         var d = BranchDetails()
         d.prs = row.prs
 

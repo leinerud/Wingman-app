@@ -480,6 +480,7 @@ enum TokenGuard {
 
 enum Inspector {
     nonisolated static func inspect(cwd: String, scope: InspectScope) -> InspectorData {
+        if Demo.isOn { var d = Demo.inspect(cwd: cwd); d.scope = scope; return d }
         var data = InspectorData(scope: scope)
         guard Access.canRead(cwd) else { data.needsAccess = true; data.isRepo = false; return data }
         guard Git.run(["--version"], cwd: cwd) != nil else { return basic(cwd: cwd, data: data) }
