@@ -12,7 +12,7 @@ struct CompactBranchesView: View {
     @Environment(\.openWindow) private var openWindow
 
     private typealias Filter = BranchesWindow.BranchFilter
-    private var filter: Filter { Filter(rawValue: filterRaw) ?? .working }
+    private var filter: Filter { Filter(saved: filterRaw) ?? .working }
 
     private var liveKeys: Set<String> {
         Set(store.sessions.filter(\.isActive).compactMap { s in s.branch.map { (s.repository ?? "") + "|" + $0 } })
@@ -38,7 +38,7 @@ struct CompactBranchesView: View {
         VStack(spacing: 0) {
             HStack {
                 CapsuleFilter(options: Filter.allCases, selection: Binding(get: { filter }, set: { filterRaw = $0.rawValue }),
-                              title: { f in f == .closeable ? "Done" : f.rawValue },
+                              title: { $0.rawValue },
                               count: { matching($0, in: rows).count },
                               dot: { $0 == .working ? Palette.working : $0 == .closeable ? Palette.ready : Palette.muted })
                 Spacer(minLength: 0)
