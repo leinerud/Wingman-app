@@ -23,6 +23,7 @@ struct BranchRow: Identifiable, Hashable {
     var ahead: Int?                   // commits on this branch that main doesn't have
     var merged: Bool?                 // nil = couldn't tell (no git)
     var sessionActive = false         // a Copilot session is working on it right now
+    var onGitHub: Bool?               // is there a branch of this name on GitHub (as of the last fetch)? nil = couldn't tell
     var folder: String?
 
     var isDefault: Bool { ["main", "master", "develop", "development", "trunk"].contains(name) }
@@ -48,7 +49,7 @@ struct RepoBranches: Identifiable, Hashable {
 }
 
 private struct LocalBranch { var name: String; var upstream: String?; var track: String?; var date: Date?; var ahead: Int?; var merged: Bool? }
-private struct LocalRepo { var current: String?; var dirty = 0; var branches: [LocalBranch] = []; var basic = false; var defaultName: String? }
+private struct LocalRepo { var current: String?; var dirty = 0; var branches: [LocalBranch] = []; var basic = false; var defaultName: String?; var remotes: Set<String> = [] }
 
 // MARK: - Loading
 
@@ -104,6 +105,11 @@ enum BranchLoader {
                     if b.folder == nil { b.folder = folder }
                     branches[lb.name] = b
                 }
+                // Which branch names exist on GitHub, as far as this folder knows from its last fetch.
+                for key in Array(branches.keys) {
+                    let known = branches[key]?.onGitHub ?? false
+                    branches[key]?.onGitHub = known || local.remotes.contains(key)
+                }
                 if let cur = local.current {
                     var b = branches[cur] ?? BranchRow(repo: name, name: cur)
                     b.isCurrent = true; b.dirty = max(b.dirty, local.dirty); b.existsLocally = true; b.folder = folder
@@ -140,6 +146,11 @@ enum BranchLoader {
             let mergedSet: Set<String> = base.flatMap { b in
                 Git.run(["for-each-ref", "--merged=" + b, "--format=%(refname:short)", "refs/heads"], cwd: cwd)
             }.map { Set($0.split(separator: "\n").map(String.init)) } ?? []
+            for line in (Git.run(["for-each-ref", "--format=%(refname)", "refs/remotes"], cwd: cwd) ?? "").split(separator: "\n") {
+                // refs/remotes/origin/some/branch -> some/branch
+                let parts = line.split(separator: "/", maxSplits: 3).map(String.init)
+                if parts.count == 4, parts[3] != "HEAD" { repo.remotes.insert(parts[3]) }
+            }
             for line in (out ?? "").split(separator: "\n") {
                 let p = line.split(separator: "\u{1f}", omittingEmptySubsequences: false).map(String.init)
                 guard p.count >= 4 else { continue }
@@ -203,6 +214,22 @@ enum BranchLoader {
             }
         }
         repo.branches = names.map { LocalBranch(name: $0.key, upstream: nil, track: nil, date: $0.value ?? nil) }
+        let remotesRoot = common + "/refs/remotes"
+        if let en = fm.enumerator(atPath: remotesRoot) {
+            for case let rel as String in en {
+                var d: ObjCBool = false
+                guard fm.fileExists(atPath: remotesRoot + "/" + rel, isDirectory: &d), !d.boolValue else { continue }
+                let parts = rel.split(separator: "/", maxSplits: 1).map(String.init)   // origin/some/branch
+                if parts.count == 2, parts[1] != "HEAD" { repo.remotes.insert(parts[1]) }
+            }
+        }
+        if let packed = try? String(contentsOfFile: common + "/packed-refs", encoding: .utf8) {
+            for line in packed.split(separator: "\n") {
+                guard let rr = line.range(of: " refs/remotes/") else { continue }
+                let parts = line[rr.upperBound...].split(separator: "/", maxSplits: 1).map(String.init)
+                if parts.count == 2, parts[1] != "HEAD" { repo.remotes.insert(parts[1]) }
+            }
+        }
         return repo
     }
 }
@@ -540,6 +567,9 @@ private struct BranchLine: View {
     private var branchURL: URL? { github("/tree/\(encodedName)") }
     private var pullsURL: URL? { github("/pulls?q=is%3Apr+head%3A\(encodedQuery)") }
     private var compareURL: URL? { github("/compare/\(encodedName)") }
+    /// False only when we know there is no such branch on GitHub, so the link would be a 404.
+    private var linkable: Bool { row.onGitHub != false }
+    private var missingOnGitHub: String { "This branch isn't on GitHub (it was never sent there, or has been removed), so there is no page to open." }
 
     // MARK: Actions (the same list is used by the ⋯ menu and by right-click)
 
@@ -554,12 +584,12 @@ private struct BranchLine: View {
     }
 
     @ViewBuilder private var actions: some View {
-        Button { if let u = branchURL { Links.open(u) } } label: { Label("View on GitHub", systemImage: "arrow.up.right.square") }
-            .disabled(branchURL == nil)
+        Button { if let u = branchURL { Links.open(u) } } label: { Label(linkable ? "View on GitHub" : "Not on GitHub", systemImage: "arrow.up.right.square") }
+            .disabled(branchURL == nil || !linkable)
         Button { if let u = pullsURL { Links.open(u) } } label: { Label("See review requests on GitHub", systemImage: "arrow.triangle.pull") }
             .disabled(pullsURL == nil)
         Button { if let u = compareURL { Links.open(u) } } label: { Label("Compare with main or ask for a review", systemImage: "arrow.left.arrow.right") }
-            .disabled(compareURL == nil)
+            .disabled(compareURL == nil || !linkable)
         Button(role: .destructive) { remove() } label: { Label(row.closeable ? "Remove from this Mac…" : "Remove from this Mac (not finished)…", systemImage: "trash") }
             .disabled(!gitOK || BranchCleanup.blocker(row) != nil)
         Divider()
@@ -583,7 +613,7 @@ private struct BranchLine: View {
         Button { copy("git -C \"\(row.folder ?? ".")\" switch \(row.name)", label: "command") } label: { Label("Copy command to switch to this version", systemImage: "terminal.fill") }
             .disabled(row.folder == nil || row.existsLocally == false)
         Button { if let u = branchURL { copy(u.absoluteString, label: "link") } } label: { Label("Copy GitHub link", systemImage: "link") }
-            .disabled(branchURL == nil)
+            .disabled(branchURL == nil || !linkable)
     }
 
     var body: some View {
@@ -606,6 +636,7 @@ private struct BranchLine: View {
                     if row.merged == nil, !row.isDefault, row.existsLocally != false {
                         chip("Can't tell if it's done", Palette.muted, "The app can't compare this branch with the main version yet. Click “Show local details…” on the project and allow its folder.")
                     }
+                    if row.onGitHub == false, row.existsLocally == false { chip("Not on GitHub", Palette.muted, missingOnGitHub) }
                     if row.existsLocally == false { chip("Not on this Mac", Palette.muted, "Copilot worked on this, but it is gone from your project folder. Often a temporary workspace that was cleaned up.") }
                 }
                 HStack(spacing: 5) {
@@ -618,8 +649,8 @@ private struct BranchLine: View {
             }
             Spacer(minLength: 6)
             HStack(spacing: 0) {
-                IconButton(symbol: "arrow.up.right.square", help: "View this branch on GitHub") { if let u = branchURL { Links.open(u) } }
-                    .disabled(branchURL == nil)
+                IconButton(symbol: "arrow.up.right.square", help: linkable ? "View this branch on GitHub" : missingOnGitHub) { if let u = branchURL { Links.open(u) } }
+                    .disabled(branchURL == nil || !linkable)
                 IconButton(symbol: "folder", help: "Show the project folder in Finder") { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } }
                     .disabled(folderURL == nil)
                 if row.closeable {
@@ -646,7 +677,7 @@ private struct BranchLine: View {
         .onHover { hover = $0 }
         .contextMenu { actions }
         .accessibilityElement(children: .combine)
-        .accessibilityAction(named: "Open on GitHub") { if let u = branchURL { Links.open(u) } }
+        .accessibilityAction(named: "Open on GitHub") { if linkable, let u = branchURL { Links.open(u) } }
         .accessibilityAction(named: "Copy branch name") { copy(row.name, label: "name") }
     }
 
