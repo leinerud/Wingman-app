@@ -1,3 +1,4 @@
+import SwiftUI
 import AppKit
 
 /// Safe, non-destructive actions. Nothing here writes to Copilot's data.
@@ -98,9 +99,18 @@ enum SessionActions {
     }
 }
 
-/// Send Feedback… opens the feedback form on leinerud.se with the Wingman and macOS versions filled in.
+/// Send Feedback… opens FeedbackView (FeedbackWindow.swift). When it can't send, it offers the form on
+/// leinerud.se instead, opened with the Wingman and macOS versions filled in.
 enum Feedback {
-    static func open() {
+    static let windowID = "feedback"
+
+    /// Opens the feedback window and brings Wingman forward (it may have no Dock icon).
+    @MainActor static func show(_ openWindow: OpenWindowAction) {
+        openWindow(id: windowID)
+        NSApp.activate()
+    }
+
+    static func openInBrowser() {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         let v = ProcessInfo.processInfo.operatingSystemVersion
         var url = URLComponents(string: "https://leinerud.se/wingman/feedback/")!

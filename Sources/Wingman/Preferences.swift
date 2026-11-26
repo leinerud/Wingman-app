@@ -328,8 +328,8 @@ struct SettingsView: View {
                 }
             }
             HStack {
-                Button("Send Feedback…") { Feedback.open() }
-                    .help("Send an idea, a bug or a kind word. Opens a short form on leinerud.se with your Wingman and macOS versions filled in.")
+                Button("Send Feedback…") { Feedback.show(openWindow) }
+                    .help("Send a problem, an idea or a kind word. Your Wingman and macOS versions are sent along.")
                 Spacer()
                 Button("Show welcome screen again") {
                     openWindow(id: WelcomeView.windowID)

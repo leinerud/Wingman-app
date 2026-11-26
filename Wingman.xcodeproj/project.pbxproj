@@ -37,6 +37,7 @@
 		B121 /* BranchDetails.swift in Sources */ = {isa = PBXBuildFile; fileRef = A121 /* BranchDetails.swift */; };
 		B123 /* Updates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A123 /* Updates.swift */; };
 		B130 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = P002 /* Sparkle */; };
+		B124 /* FeedbackWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A124 /* FeedbackWindow.swift */; };
 		B122 /* Demo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A122 /* Demo.swift */; };
 /* End PBXBuildFile section */
 
@@ -98,6 +99,7 @@
 		A119 /* BranchesCompact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BranchesCompact.swift; sourceTree = "<group>"; };
 		A121 /* BranchDetails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BranchDetails.swift; sourceTree = "<group>"; };
 		A123 /* Updates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updates.swift; sourceTree = "<group>"; };
+		A124 /* FeedbackWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackWindow.swift; sourceTree = "<group>"; };
 		A122 /* Demo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Demo.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -153,6 +155,7 @@
 				A121 /* BranchDetails.swift */,
 				A123 /* Updates.swift */,
 				A122 /* Demo.swift */,
+				A124 /* FeedbackWindow.swift */,
 			);
 			name = Wingman;
 			path = Sources/Wingman;
@@ -339,6 +342,7 @@
 				B121 /* BranchDetails.swift in Sources */,
 				B123 /* Updates.swift in Sources */,
 				B122 /* Demo.swift in Sources */,
+				B124 /* FeedbackWindow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -423,8 +427,8 @@
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				OTHER_LDFLAGS = "-lsqlite3";
-				MARKETING_VERSION = 0.2;
-				CURRENT_PROJECT_VERSION = 4;
+				MARKETING_VERSION = 0.2.1;
+				CURRENT_PROJECT_VERSION = 5;
 				PRODUCT_BUNDLE_IDENTIFIER = se.leinerud.Wingman;
 				PRODUCT_NAME = Wingman;
 				REGISTER_APP_GROUPS = YES;
@@ -446,8 +450,8 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.2;
-				CURRENT_PROJECT_VERSION = 4;
+				MARKETING_VERSION = 0.2.1;
+				CURRENT_PROJECT_VERSION = 5;
 				PRODUCT_BUNDLE_IDENTIFIER = se.leinerud.Wingman.Widget;
 				PRODUCT_NAME = WingmanWidget;
 				REGISTER_APP_GROUPS = YES;
@@ -512,8 +516,8 @@
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				OTHER_LDFLAGS = "-lsqlite3";
-				MARKETING_VERSION = 0.2;
-				CURRENT_PROJECT_VERSION = 4;
+				MARKETING_VERSION = 0.2.1;
+				CURRENT_PROJECT_VERSION = 5;
 				PRODUCT_BUNDLE_IDENTIFIER = se.leinerud.Wingman;
 				PRODUCT_NAME = Wingman;
 				REGISTER_APP_GROUPS = YES;
@@ -533,8 +537,8 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.2;
-				CURRENT_PROJECT_VERSION = 4;
+				MARKETING_VERSION = 0.2.1;
+				CURRENT_PROJECT_VERSION = 5;
 				PRODUCT_BUNDLE_IDENTIFIER = se.leinerud.Wingman.Widget;
 				PRODUCT_NAME = WingmanWidget;
 				REGISTER_APP_GROUPS = YES;
