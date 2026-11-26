@@ -57,7 +57,7 @@ enum Access {
     /// Asks the user to pick the `.copilot` folder. Returns true once it can be read.
     @MainActor @discardableResult
     static func requestCopilotFolder() -> Bool {
-        guard let url = panel(message: "Select the “.copilot” folder in your home folder and click Allow. Pajlot Assist only reads it to show your sessions.",
+        guard let url = panel(message: "Select the “.copilot” folder in your home folder and click Allow. Wingman only reads it to show your sessions.",
                               prompt: "Allow", start: URL(fileURLWithPath: copilotPath), hidden: true) else { return hasCopilotAccess }
         guard url.lastPathComponent == ".copilot" else {
             let a = NSAlert()
@@ -75,7 +75,7 @@ enum Access {
     @MainActor @discardableResult
     static func requestProjectFolder(for path: String) -> Bool {
         let start = URL(fileURLWithPath: path)
-        guard let url = panel(message: "Allow Pajlot Assist to read this project so it can show what changed. Pick a parent folder to cover all your projects at once.",
+        guard let url = panel(message: "Allow Wingman to read this project so it can show what changed. Pick a parent folder to cover all your projects at once.",
                               prompt: "Allow", start: start, hidden: false) else { return canRead(path) }
         let key = "access.project." + url.path
         remember(url, key: key)
@@ -102,7 +102,7 @@ struct CopilotAccessGuide: View {
                     Text("Connected. Your sessions show up automatically.").font(.system(size: 12.5, weight: .medium))
                 }
             } else {
-                Text("Your Copilot sessions are stored in a hidden folder called “.copilot”. macOS asks you to approve access once. Pajlot Assist only reads it and never changes anything.")
+                Text("Your Copilot sessions are stored in a hidden folder called “.copilot”. macOS asks you to approve access once. Wingman only reads it and never changes anything.")
                     .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 VStack(alignment: .leading, spacing: 6) {
                     step(1, "Click “Choose .copilot folder…”")

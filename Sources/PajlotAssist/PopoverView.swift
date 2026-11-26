@@ -210,7 +210,7 @@ struct PopoverView: View {
                 Circle().fill(Palette.accent.opacity(0.12)).frame(width: 48, height: 48)
                 Image(systemName: "lock.open.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(Palette.accent)
             }
-            Text("Let Pajlot Assist see your sessions").font(.system(size: 13, weight: .semibold))
+            Text("Let Wingman see your sessions").font(.system(size: 13, weight: .semibold))
             CopilotAccessGuide(compact: true) { store.accessChanged() }
                 .frame(maxWidth: 310, alignment: .leading)
         }

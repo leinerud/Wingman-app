@@ -11,7 +11,7 @@ struct PajlotAssistApp: App {
     var body: some Scene {
         // The Dock window: the same view as the menu bar popover, in a regular window.
         // It opens at launch only for Dock users who are past the welcome screen.
-        Window("Pajlot Assist", id: MainWindow.id) {
+        Window("Wingman", id: MainWindow.id) {
             PopoverView(resizable: true).environmentObject(store).registersWindowOpener()
         }
         .windowResizability(.contentMinSize)
@@ -20,7 +20,7 @@ struct PajlotAssistApp: App {
         .defaultLaunchBehavior(Prefs.hasSeenWelcome && Prefs.showInDock ? .presented : .suppressed)
 
         // First-launch splash: pick Dock and/or menu bar, and learn about the widget.
-        Window("Welcome to Pajlot Assist", id: WelcomeView.windowID) {
+        Window("Welcome to Wingman", id: WelcomeView.windowID) {
             WelcomeView().registersWindowOpener()
         }
         .windowResizability(.contentSize)
@@ -108,7 +108,7 @@ struct MenuBarLabel: View {
             Image(nsImage: animator.image)
             if store.activeCount > 0 { Text("\(store.activeCount)") }
         }
-        .help(store.activeCount == 0 ? "Pajlot Assist: nothing running" : "Pajlot Assist: \(store.activeCount) \(store.activeCount == 1 ? "session" : "sessions") active")
+        .help(store.activeCount == 0 ? "Wingman: nothing running" : "Wingman: \(store.activeCount) \(store.activeCount == 1 ? "session" : "sessions") active")
         .onAppear { animator.set(mode) }
         .registersWindowOpener()
         .onChange(of: mode) { _, new in animator.set(new) }

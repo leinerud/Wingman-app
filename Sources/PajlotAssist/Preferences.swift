@@ -89,7 +89,7 @@ private struct PlacementCard: View {
         }
         .buttonStyle(.plain)
         .onHover { hover = $0 }
-        .help(locked ? "Keep at least one place on so you can reach Pajlot Assist" : "")
+        .help(locked ? "Keep at least one place on so you can reach Wingman" : "")
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
@@ -154,7 +154,7 @@ struct WidgetShowcase: View {
             VStack(alignment: .leading, spacing: 6) {
                 step(1, "Right-click your desktop")
                 step(2, "Choose Edit Widgets…")
-                step(3, "Search for Pajlot Assist")
+                step(3, "Search for Wingman")
             }
         }
     }
@@ -175,7 +175,7 @@ private struct MockWidget: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 3) {
                 Image(systemName: "sparkles").font(.system(size: 7, weight: .bold)).foregroundStyle(Palette.accent)
-                Text("Pajlot").font(.system(size: 7.5, weight: .semibold))
+                Text("Wingman").font(.system(size: 7.5, weight: .semibold))
             }
             if small {
                 Spacer(minLength: 0)
@@ -277,7 +277,7 @@ struct BrowserSettings: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: 260)
-                .help("Choose which browser opens links from Pajlot Assist")
+                .help("Choose which browser opens links from Wingman")
                 Button("Try it") { Links.open(URL(string: "https://github.com")!) }
                     .help("Opens github.com in the browser you picked")
             }
@@ -292,13 +292,13 @@ struct BrowserSettings: View {
 
 // MARK: - Settings
 
-/// Shows which folders Pajlot Assist may read, and lets you change them.
+/// Shows which folders Wingman may read, and lets you change them.
 struct AccessSettings: View {
     @State private var copilot = Access.hasCopilotAccess
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Pajlot Assist reads your sessions and projects. It only changes something when you ask, such as removing a finished branch from your Mac. macOS needs your OK for each folder.")
+            Text("Wingman reads your sessions and projects. It only changes something when you ask, such as removing a finished branch from your Mac. macOS needs your OK for each folder.")
                 .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Image(systemName: copilot ? "checkmark.circle.fill" : "exclamationmark.circle").foregroundStyle(copilot ? Palette.ready : Palette.attention)
@@ -317,12 +317,12 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            section("Where Pajlot Assist lives") { PlacementPicker() }
+            section("Where Wingman lives") { PlacementPicker() }
             section("Open links in") { BrowserSettings() }
             section("Access to your files") { AccessSettings() }
             section("Desktop widget") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("See your sessions right on the desktop, in a small, medium or large size. It updates while Pajlot Assist is running.")
+                    Text("See your sessions right on the desktop, in a small, medium or large size. It updates while Wingman is running.")
                         .font(.system(size: 11.5)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     WidgetShowcase()

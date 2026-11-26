@@ -73,7 +73,7 @@
 		A113 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		A200 /* PajlotWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PajlotWidget.swift; sourceTree = "<group>"; };
 		C001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		C002 /* PajlotAssist.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PajlotAssist.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C002 /* Wingman.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Wingman.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C004 /* PajlotAssist.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PajlotAssist.entitlements; sourceTree = "<group>"; };
 		C005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -159,7 +159,7 @@
 		D004 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				C002 /* PajlotAssist.app */,
+				C002 /* Wingman.app */,
 				C010 /* PajlotWidget.appex */,
 			);
 			name = Products;
@@ -215,7 +215,7 @@
 			);
 			name = PajlotAssist;
 			productName = PajlotAssist;
-			productReference = C002 /* PajlotAssist.app */;
+			productReference = C002 /* Wingman.app */;
 			productType = "com.apple.product-type.application";
 		};
 		F002 /* PajlotWidget */ = {
@@ -402,7 +402,7 @@
 				MARKETING_VERSION = 0.1;
 				CURRENT_PROJECT_VERSION = 2;
 				PRODUCT_BUNDLE_IDENTIFIER = se.humblebee.PajlotAssist;
-				PRODUCT_NAME = PajlotAssist;
+				PRODUCT_NAME = Wingman;
 				REGISTER_APP_GROUPS = YES;
 			};
 			name = Debug;
@@ -491,7 +491,7 @@
 				MARKETING_VERSION = 0.1;
 				CURRENT_PROJECT_VERSION = 2;
 				PRODUCT_BUNDLE_IDENTIFIER = se.humblebee.PajlotAssist;
-				PRODUCT_NAME = PajlotAssist;
+				PRODUCT_NAME = Wingman;
 				REGISTER_APP_GROUPS = YES;
 			};
 			name = Release;

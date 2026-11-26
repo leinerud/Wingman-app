@@ -10,7 +10,7 @@ enum MenuBarIconMode: Equatable {
 
     var accessibilityLabel: String {
         switch self {
-        case .idle: "Pajlot Assist"
+        case .idle: "Wingman"
         case .working: "A session is working"
         case .needsInput: "A session needs you"
         case .done: "A session finished"
@@ -151,7 +151,7 @@ enum MenuBarIcon {
 /// between idle heartbeats, so the menu bar stays cheap.
 @MainActor
 final class MenuBarIconAnimator: ObservableObject {
-    @Published private(set) var image: NSImage = MenuBarIcon.image(.init(), description: "Pajlot Assist")
+    @Published private(set) var image: NSImage = MenuBarIcon.image(.init(), description: "Wingman")
     private var mode: MenuBarIconMode = .idle
     private var modeStart = Date()
     private var timer: Timer?

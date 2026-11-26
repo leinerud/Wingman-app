@@ -21,7 +21,7 @@ struct WelcomeView: View {
                 block(number: 2, title: "Where should it live?") { PlacementPicker() }
                 block(number: 3, title: "Add it to your desktop, too") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Pajlot Assist comes with a widget, so you can keep an eye on your sessions without opening anything.")
+                        Text("Wingman comes with a widget, so you can keep an eye on your sessions without opening anything.")
                             .font(.system(size: 11.5)).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         WidgetShowcase()
@@ -42,7 +42,7 @@ struct WelcomeView: View {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable().frame(width: 76, height: 76)
                 .shadow(color: Palette.accent.opacity(0.25), radius: 14, y: 6)
-            Text("Welcome to Pajlot Assist")
+            Text("Welcome to Wingman")
                 .font(.system(size: 22, weight: .bold))
             Text("Keep an eye on your Copilot sessions: what's working, what's done,\nand what's waiting for you.")
                 .font(.system(size: 13)).foregroundStyle(.secondary)

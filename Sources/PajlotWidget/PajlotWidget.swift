@@ -119,8 +119,8 @@ struct WidgetView: View {
 
     var body: some View {
         Group {
-            if entry.snapshot.needsAccess == true { notice("lock", "Allow access", "Open Pajlot Assist and choose your .copilot folder.") }
-            else if stale && sessions.isEmpty { notice("moon.zzz", "Not running", "Open Pajlot Assist to see your sessions.") }
+            if entry.snapshot.needsAccess == true { notice("lock", "Allow access", "Open Wingman and choose your .copilot folder.") }
+            else if stale && sessions.isEmpty { notice("moon.zzz", "Not running", "Open Wingman to see your sessions.") }
             else if family == .systemSmall { small } else { list(max: family == .systemExtraLarge ? 8 : family == .systemLarge ? 5 : 2) }
         }
         .opacity(stale ? 0.55 : 1)
@@ -174,7 +174,7 @@ struct WidgetView: View {
     private var header: some View {
         HStack(spacing: 5) {
             LogoMark().frame(width: 18, height: 18).foregroundStyle(scheme == .dark ? Color(white: 0.95) : Color(red: 0x23/255, green: 0x23/255, blue: 0x23/255)).widgetAccentable()
-            Text("Pajlot").font(.inter(15, .semibold))
+            Text("Wingman").font(.inter(15, .semibold))
             Spacer(minLength: 0)
             if stale && family != .systemSmall {
                 Badge(text: "Out of date · open the app", tint: .secondary)
