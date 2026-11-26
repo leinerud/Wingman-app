@@ -20,7 +20,7 @@ struct WidgetSnapshot: Codable, Equatable {
     /// Set when the app can't read Copilot's folder yet, so the widget can say so instead of showing old data.
     var needsAccess: Bool? = nil
 
-    static let appGroup = "RD223D229Z.se.humblebee.PajlotAssist"
+    static let appGroup = "RD223D229Z.se.leinerud.Wingman"
     static let widgetKind = "WingmanSessions"
     /// The app refreshes the file at least every 10 minutes while it runs; older than this means it isn't.
     static let staleAfter: TimeInterval = 25 * 60

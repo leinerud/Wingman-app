@@ -401,7 +401,7 @@
 				OTHER_LDFLAGS = "-lsqlite3";
 				MARKETING_VERSION = 0.1;
 				CURRENT_PROJECT_VERSION = 2;
-				PRODUCT_BUNDLE_IDENTIFIER = se.humblebee.PajlotAssist;
+				PRODUCT_BUNDLE_IDENTIFIER = se.leinerud.Wingman;
 				PRODUCT_NAME = Wingman;
 				REGISTER_APP_GROUPS = YES;
 			};
@@ -424,7 +424,7 @@
 				);
 				MARKETING_VERSION = 0.1;
 				CURRENT_PROJECT_VERSION = 2;
-				PRODUCT_BUNDLE_IDENTIFIER = se.humblebee.PajlotAssist.Widget;
+				PRODUCT_BUNDLE_IDENTIFIER = se.leinerud.Wingman.Widget;
 				PRODUCT_NAME = WingmanWidget;
 				REGISTER_APP_GROUPS = YES;
 				SKIP_INSTALL = YES;
@@ -490,7 +490,7 @@
 				OTHER_LDFLAGS = "-lsqlite3";
 				MARKETING_VERSION = 0.1;
 				CURRENT_PROJECT_VERSION = 2;
-				PRODUCT_BUNDLE_IDENTIFIER = se.humblebee.PajlotAssist;
+				PRODUCT_BUNDLE_IDENTIFIER = se.leinerud.Wingman;
 				PRODUCT_NAME = Wingman;
 				REGISTER_APP_GROUPS = YES;
 			};
@@ -511,7 +511,7 @@
 				);
 				MARKETING_VERSION = 0.1;
 				CURRENT_PROJECT_VERSION = 2;
-				PRODUCT_BUNDLE_IDENTIFIER = se.humblebee.PajlotAssist.Widget;
+				PRODUCT_BUNDLE_IDENTIFIER = se.leinerud.Wingman.Widget;
 				PRODUCT_NAME = WingmanWidget;
 				REGISTER_APP_GROUPS = YES;
 				SKIP_INSTALL = YES;

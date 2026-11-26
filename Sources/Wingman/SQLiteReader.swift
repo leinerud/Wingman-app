@@ -4,7 +4,7 @@ import os
 
 /// Minimal read-only SQLite helper. Never writes to Copilot's databases.
 enum SQLiteReader {
-    private static let log = Logger(subsystem: "se.humblebee.Wingman", category: "sqlite")
+    private static let log = Logger(subsystem: "se.leinerud.Wingman", category: "sqlite")
 
     static func rows(path: String, sql: String) -> [[String: String]] {
         if let rows = query(path: path, sql: sql) { return rows }

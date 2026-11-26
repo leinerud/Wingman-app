@@ -11,6 +11,6 @@
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
 <key>ITSAppUsesNonExemptEncryption</key><false/>
-<key>NSHumanReadableCopyright</key><string>© Humblebee</string>
+<key>NSHumanReadableCopyright</key><string>© Daniel Leinerud</string>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
