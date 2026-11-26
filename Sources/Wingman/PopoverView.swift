@@ -304,6 +304,7 @@ struct PopoverView: View {
 
             Spacer()
 
+            UpdateBadge().padding(.trailing, 6)
             LiveIndicator().padding(.trailing, 6)
 
             IconButton(symbol: "arrow.clockwise", help: "Check for the latest updates", rotation: spin) {

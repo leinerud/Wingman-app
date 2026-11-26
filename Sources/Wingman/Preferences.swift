@@ -318,6 +318,7 @@ struct SettingsView: View {
             section("Where Wingman lives") { PlacementPicker() }
             section("Open links in") { BrowserSettings() }
             section("Access to your files") { AccessSettings() }
+            section("Updates") { UpdateSettings() }
             section("Desktop widget") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("See your sessions right on the desktop, in a small, medium or large size. It updates while Wingman is running.")
