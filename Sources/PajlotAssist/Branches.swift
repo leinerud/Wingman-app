@@ -24,6 +24,7 @@ struct BranchRow: Identifiable, Hashable {
     var merged: Bool?                 // nil = couldn't tell (no git)
     var sessionActive = false         // a Copilot session is working on it right now
     var onGitHub: Bool?               // is there a branch of this name on GitHub (as of the last fetch)? nil = couldn't tell
+    var prs: [Int] = []               // pull requests Copilot opened for this branch (from the session list)
     var folder: String?
 
     var isDefault: Bool { ["main", "master", "develop", "development", "trunk"].contains(name) }
@@ -80,6 +81,15 @@ enum BranchLoader {
             repos[repo] = acc
         }
 
+        // Pull requests Copilot recorded per branch. A PR page always exists, even if the branch has since been removed.
+        var prMap: [String: Set<Int>] = [:]
+        for row in SQLiteReader.rows(path: Access.copilotPath + "/session-store.db", sql: """
+            SELECT s.repository AS repository, s.branch AS branch, r.ref_value AS value FROM session_refs r
+            JOIN sessions s ON s.id = r.session_id WHERE r.ref_type = 'pr'
+            """) {
+            if let repo = row["repository"], let b = row["branch"], let n = row["value"].flatMap({ Int($0) }) { prMap[repo + "|" + b, default: []].insert(n) }
+        }
+
         var out: [RepoBranches] = []
         for (name, acc) in repos {
             var branches = acc.branches
@@ -120,6 +130,7 @@ enum BranchLoader {
             for key in branches.keys where branches[key]?.existsLocally == nil && !needsAccess && !folders.isEmpty {
                 branches[key]?.existsLocally = false
             }
+            for key in Array(branches.keys) { branches[key]?.prs = (prMap[name + "|" + key] ?? []).sorted() }
             out.append(RepoBranches(name: name, folders: folders, branches: Array(branches.values), needsAccess: needsAccess, basicLocal: basic))
         }
         return out.sorted { ($0.lastActive ?? .distantPast) > ($1.lastActive ?? .distantPast) }
@@ -568,8 +579,13 @@ private struct BranchLine: View {
     private var pullsURL: URL? { github("/pulls?q=is%3Apr+head%3A\(encodedQuery)") }
     private var compareURL: URL? { github("/compare/\(encodedName)") }
     /// False only when we know there is no such branch on GitHub, so the link would be a 404.
-    private var linkable: Bool { row.onGitHub != false }
-    private var missingOnGitHub: String { "This branch isn't on GitHub (it was never sent there, or has been removed), so there is no page to open." }
+    private var linkable: Bool { row.onGitHub == true }
+    private var prURL: URL? { row.prs.max().flatMap { github("/pull/\($0)") } }
+    private var missingOnGitHub: String {
+        row.onGitHub == false
+            ? "This branch isn't on GitHub (it was never sent there, or has been removed), so there is no page to open."
+            : "The app can't tell yet whether this branch is on GitHub, and many aren't. Click “Show local details…” on the project and allow its folder."
+    }
 
     // MARK: Actions (the same list is used by the ⋯ menu and by right-click)
 
@@ -584,8 +600,11 @@ private struct BranchLine: View {
     }
 
     @ViewBuilder private var actions: some View {
-        Button { if let u = branchURL { Links.open(u) } } label: { Label(linkable ? "View on GitHub" : "Not on GitHub", systemImage: "arrow.up.right.square") }
+        Button { if let u = branchURL { Links.open(u) } } label: { Label(linkable ? "View on GitHub" : (row.onGitHub == false ? "Not on GitHub" : "May not be on GitHub"), systemImage: "arrow.up.right.square") }
             .disabled(branchURL == nil || !linkable)
+        ForEach(Array(row.prs.sorted().reversed().prefix(3)), id: \.self) { n in
+            Button { if let u = github("/pull/\(n)") { Links.open(u) } } label: { Label("Open pull request #\(n)", systemImage: "arrow.triangle.merge") }
+        }
         Button { if let u = pullsURL { Links.open(u) } } label: { Label("See review requests on GitHub", systemImage: "arrow.triangle.pull") }
             .disabled(pullsURL == nil)
         Button { if let u = compareURL { Links.open(u) } } label: { Label("Compare with main or ask for a review", systemImage: "arrow.left.arrow.right") }
@@ -636,6 +655,7 @@ private struct BranchLine: View {
                     if row.merged == nil, !row.isDefault, row.existsLocally != false {
                         chip("Can't tell if it's done", Palette.muted, "The app can't compare this branch with the main version yet. Click “Show local details…” on the project and allow its folder.")
                     }
+                    if let n = row.prs.max() { chip("PR #\(n)", Palette.muted, "Copilot opened pull request #\(n) for this branch. Use the ⋯ menu to open it.") }
                     if row.onGitHub == false, row.existsLocally == false { chip("Not on GitHub", Palette.muted, missingOnGitHub) }
                     if row.existsLocally == false { chip("Not on this Mac", Palette.muted, "Copilot worked on this, but it is gone from your project folder. Often a temporary workspace that was cleaned up.") }
                 }
@@ -649,8 +669,11 @@ private struct BranchLine: View {
             }
             Spacer(minLength: 6)
             HStack(spacing: 0) {
-                IconButton(symbol: "arrow.up.right.square", help: linkable ? "View this branch on GitHub" : missingOnGitHub) { if let u = branchURL { Links.open(u) } }
-                    .disabled(branchURL == nil || !linkable)
+                IconButton(symbol: "arrow.up.right.square",
+                           help: linkable ? "View this branch on GitHub" : (prURL != nil ? "Open pull request #\(row.prs.max() ?? 0) on GitHub" : missingOnGitHub)) {
+                    if linkable, let u = branchURL { Links.open(u) } else if let u = prURL { Links.open(u) }
+                }
+                .disabled(!(linkable && branchURL != nil) && prURL == nil)
                 IconButton(symbol: "folder", help: "Show the project folder in Finder") { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } }
                     .disabled(folderURL == nil)
                 if row.closeable {
