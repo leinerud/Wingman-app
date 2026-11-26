@@ -396,10 +396,17 @@ struct BranchesWindow: View {
     static let pendingQueryKey = "branches.pendingQuery"
 
     enum BranchFilter: String, CaseIterable, Identifiable {
-        case working = "In progress", closeable = "Ready to close", all = "All"
+        case working = "In progress", closeable = "Done", all = "All"
+
+        /// Reads a saved choice, including the old name "Ready to close".
+        init?(saved: String) {
+            if let f = BranchFilter(rawValue: saved) { self = f }
+            else if saved == "Ready to close" { self = .closeable }
+            else { return nil }
+        }
         var id: Self { self }
     }
-    private var filter: BranchFilter { BranchFilter(rawValue: filterRaw) ?? .all }
+    private var filter: BranchFilter { BranchFilter(saved: filterRaw) ?? .all }
 
     /// Branches a live Copilot session is using right now.
     private var liveKeys: Set<String> {
