@@ -315,6 +315,9 @@ struct PopoverView: View {
                     withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) { tab = tab == .branches ? .sessions : .branches }
                 }
             }
+            IconButton(symbol: "bubble.left", help: "Send feedback: an idea, a bug or a kind word. Opens a short form on leinerud.se.") {
+                Feedback.open()
+            }
             IconButton(symbol: "gearshape", help: "Settings: Dock, menu bar and desktop widget", shortcut: ",") {
                 openWindow(id: SettingsWindowID.id)
                 NSApp.activate()

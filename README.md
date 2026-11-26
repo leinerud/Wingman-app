@@ -15,3 +15,12 @@ Reads `~/.copilot` read-only. Build with `./Scripts/build-app.sh` or the Xcode p
 ## Branches
 
 The **Branches** tab (next to Sessions at the top of the window, or the branch icon in the menu bar panel) lists every repository and branch your Copilot sessions have used, split into *In progress*, *Paused* and *Done · safe to close*, each with a suggested next step. Finished branches can be removed from your Mac with **Clean up**: you review the list first, it only removes what is confirmed merged into GitHub's main unless you tick it, and **Undo** brings them back. Only local copies are removed, never anything on GitHub. If a branch is still open in another workspace, Wingman shows that folder with **Open in GitHub Copilot**, **Show in Finder**, **Open in Terminal** and **Copy path**. Needs git; without it you can copy the commands instead.
+
+## Release
+
+The beta is downloadable from [leinerud.se/wingman](https://leinerud.se/wingman/). To release a new version, raise `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in the Xcode project, write what's new in `Resources/ReleaseNotes/<version>.html`, and run `./Scripts/direct.sh release`. It signs with your Developer ID, notarizes and staples the .dmg, and copies it into the website repo along with its appcast entry. Then point `downloadUrl` in the website's `src/content/apps/wingman.md` at the new file, and commit and push the website. `./Scripts/direct.sh local` builds an unsigned .dmg to check the window layout. The background is drawn by `Resources/dmg/make-background.py`.
+
+## Screenshots
+
+Screenshots use demo mode, so they never show real work: made-up sessions, branches and changes from `Sources/Wingman/Demo.swift`, with nothing read from disk. Launch a build with `-WingmanDemo YES` (for example `open -n Wingman.app --args -WingmanDemo YES -main.tab Branches`). The window opens at 1000 x 625, which captures at 2000 x 1250. `-WingmanDemoDetails <branch>` opens a branch's "What's in it", and `-WingmanDemoReview <session id>` (with `-WingmanDemoReviewTab Tokens` or `Timeline`) opens Review. Capture only the window (`screencapture -o -l <window id>`) as `raw-*.png` in `Assets/Screenshots`, then `python3 Assets/Screenshots/compose.py Assets/Screenshots <output folder>` adds the headline and background used on leinerud.se.
+

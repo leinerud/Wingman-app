@@ -5,7 +5,8 @@ import Combine
 @main
 struct WingmanApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var store = SessionStore()
+    // With -WingmanDemo YES it shows made-up sessions instead of yours (Demo.swift), for screenshots.
+    @StateObject private var store = Demo.isOn ? SessionStore(preview: Demo.sessions) : SessionStore()
     @AppStorage(Prefs.menuBar) private var showInMenuBar = true
 
     var body: some Scene {
@@ -19,6 +20,11 @@ struct WingmanApp: App {
         .defaultSize(width: 720, height: 640)
         .defaultPosition(.topTrailing)
         .defaultLaunchBehavior(Prefs.hasSeenWelcome && Prefs.showInDock ? .presented : .suppressed)
+        .commands {
+            CommandGroup(after: .help) {
+                Button("Send Feedback…") { Feedback.open() }
+            }
+        }
 
         // First-launch splash: pick Dock and/or menu bar, and learn about the widget.
         Window("Welcome to Wingman", id: WelcomeView.windowID) {
@@ -31,7 +37,7 @@ struct WingmanApp: App {
 
         // "Review": what a session changed on screen, token check, timeline and live preview.
         WindowGroup("Review", id: InspectorWindowID.id, for: String.self) { $sessionID in
-            InspectorWindow(sessionID: sessionID ?? "").environmentObject(store)
+            InspectorWindow(sessionID: sessionID ?? "").environmentObject(store).onAppear { Demo.fitWindows() }
         }
         .defaultSize(width: 780, height: 640)
 
@@ -67,6 +73,7 @@ struct MainWindowView: View {
         var id: Self { self }
     }
     @AppStorage(MainWindow.tabKey) private var tab: Tab = .sessions
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Group {
@@ -76,6 +83,10 @@ struct MainWindowView: View {
             }
         }
         .navigationTitle(tab.rawValue)
+        .onAppear {
+            Demo.fitWindows()
+            if let id = Demo.reviewSession { openWindow(id: InspectorWindowID.id, value: id) }
+        }
         .toolbar(removing: .title)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar {
@@ -147,7 +158,7 @@ struct MenuBarLabel: View {
             if store.activeCount > 0 { Text("\(store.activeCount)") }
         }
         .help(store.activeCount == 0 ? "Wingman: nothing running" : "Wingman: \(store.activeCount) \(store.activeCount == 1 ? "session" : "sessions") active")
-        .onAppear { animator.set(mode) }
+        .onAppear { animator.set(mode); Demo.openPanel() }
         .registersWindowOpener()
         .onChange(of: mode) { _, new in animator.set(new) }
         .onReceive(timer) { _ in
