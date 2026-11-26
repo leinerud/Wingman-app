@@ -767,13 +767,13 @@ private struct BranchLine: View {
         Divider()
         Button { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } } label: { Label("Show project folder in Finder", systemImage: "folder") }
             .disabled(folderURL == nil)
-        if row.copilot == .closed && row.closeable {
-            // Finished and archived in Copilot: there is nothing left to do there.
-            Button {} label: { Label("Closed in GitHub Copilot", systemImage: "checkmark.circle") }.disabled(true)
-        } else {
-            Button { openInCopilot() } label: { Label(row.copilot == .closed ? "Reopen in GitHub Copilot" : "Open in GitHub Copilot", systemImage: "sparkles") }
-                .disabled(NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.github.githubapp") == nil)
+        // Archived workspaces open too: Copilot shows them read-only with a Restore button.
+        Button { openInCopilot() } label: {
+            Label(row.copilot != .closed ? "Open in GitHub Copilot" : row.closeable ? "Open in GitHub Copilot (closed)" : "Reopen in GitHub Copilot",
+                  systemImage: "sparkles")
         }
+        .disabled(NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.github.githubapp") == nil)
+        .help(row.copilot == .closed ? "Opens the closed workspace in the GitHub Copilot app. Use Restore there to work on it again." : "Opens this branch's session in the GitHub Copilot app")
         Button { openApp("com.apple.Terminal") } label: { Label("Open in Terminal", systemImage: "terminal") }
             .disabled(folderURL == nil)
         Divider()
