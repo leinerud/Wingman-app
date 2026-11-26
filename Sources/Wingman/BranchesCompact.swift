@@ -191,14 +191,13 @@ private struct CompactBranchRow: View {
     @ViewBuilder private var actions: some View {
         Button { openFull() } label: { Label("Show in Branches", systemImage: "arrow.triangle.branch") }
         Divider()
-        if row.copilot == .closed && row.closeable {
-            Button {} label: { Label("Closed in GitHub Copilot", systemImage: "checkmark.circle") }.disabled(true)
-        } else {
-            Button { SessionActions.openCopilot(workspace: row.folder, branch: row.name, repo: row.repo.contains("/") ? row.repo : nil) } label: {
-                Label(row.copilot == .closed ? "Reopen in GitHub Copilot" : "Open in GitHub Copilot", systemImage: "sparkles")
-            }
-            .disabled(NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.github.githubapp") == nil)
+        // Archived workspaces open too: Copilot shows them read-only with a Restore button.
+        Button { SessionActions.openCopilot(workspace: row.folder, branch: row.name, repo: row.repo.contains("/") ? row.repo : nil) } label: {
+            Label(row.copilot != .closed ? "Open in GitHub Copilot" : row.closeable ? "Open in GitHub Copilot (closed)" : "Reopen in GitHub Copilot",
+                  systemImage: "sparkles")
         }
+        .disabled(NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.github.githubapp") == nil)
+        .help(row.copilot == .closed ? "Opens the closed workspace in the GitHub Copilot app. Use Restore there to work on it again." : "Opens this branch's session in the GitHub Copilot app")
         if let u = prURL, let n = row.prs.max() {
             Button { Links.open(u) } label: { Label("Open pull request #\(n)", systemImage: "arrow.triangle.pull") }
         }
