@@ -15,6 +15,23 @@ enum Git {
         "/usr/bin/git",
     ].first { FileManager.default.isExecutableFile(atPath: $0) }
 
+    /// Runs a git command and returns its exit status and messages. Used only for actions the user explicitly confirms.
+    nonisolated static func runResult(_ args: [String], cwd: String) -> (ok: Bool, out: String, err: String) {
+        guard let exe = executable, FileManager.default.fileExists(atPath: cwd) else { return (false, "", "Git isn't available.") }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: exe)
+        p.arguments = ["-c", "core.quotepath=off", "-C", cwd] + args
+        var env = ProcessInfo.processInfo.environment
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        p.environment = env
+        let out = Pipe(), err = Pipe()
+        p.standardOutput = out; p.standardError = err
+        do { try p.run() } catch { return (false, "", "Git couldn't be started.") }
+        let o = out.fileHandleForReading.readDataToEndOfFile(), e = err.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return (p.terminationStatus == 0, String(decoding: o, as: UTF8.self), String(decoding: e, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     /// Runs a read-only git command in `cwd`. Returns nil when git fails or the folder isn't a repository.
     nonisolated static func run(_ args: [String], cwd: String) -> String? {
         guard !cwd.isEmpty, FileManager.default.fileExists(atPath: cwd) else { return nil }

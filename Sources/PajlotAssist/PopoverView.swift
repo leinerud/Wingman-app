@@ -327,6 +327,7 @@ struct SessionCard: View {
                 if let c = session.tag.color {
                     Circle().fill(c).frame(width: 8, height: 8).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
                         .accessibilityLabel("\(session.tag.label) tag")
+                        .help("Colour tag: \(session.tag.label)")
                 }
                 if renaming {
                     TextField("Session name", text: $draft)
@@ -347,6 +348,7 @@ struct SessionCard: View {
                 Spacer(minLength: 4)
                 if session.pinned {
                     Image(systemName: "pin.fill").font(.system(size: 9.5)).foregroundStyle(.tertiary).accessibilityLabel("Pinned")
+                        .help("Pinned: this session stays at the top of your list")
                 }
                 StatusPill(status: session.status)
             }
@@ -738,7 +740,12 @@ struct StepList: View {
 struct StepMarker: View {
     let state: TodoItem.State
     let tint: Color
-    var body: some View {
+    private var label: String {
+        switch state { case .done: "Done"; case .in_progress: "In progress"; case .blocked: "Blocked: waiting for you"; case .pending: "Not started yet" }
+    }
+    var body: some View { marker.help(label).accessibilityLabel(label) }
+
+    @ViewBuilder private var marker: some View {
         switch state {
         case .done:
             Circle().fill(Palette.ready)
@@ -796,6 +803,8 @@ struct MoreMenu: View {
             Button { SessionActions.copyID(session) } label: { Label("Copy session ID (for support)", systemImage: "doc.on.doc") }
         } label: {
             Image(systemName: "ellipsis").font(.system(size: 11.5, weight: .semibold))
+                .help("More: review changes, pin, rename, colour tag, open folder, GitHub")
+                .accessibilityLabel("More actions")
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -832,6 +841,7 @@ struct IconButton: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help)
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
 
         if let shortcut { button.keyboardShortcut(shortcut) } else { button }

@@ -289,6 +289,7 @@ private struct Swatch: View {
     var body: some View {
         if let c = Color(cssHex: hex) {
             RoundedRectangle(cornerRadius: 4, style: .continuous).fill(c).frame(width: 16, height: 16)
+                .help("Colour \(hex.uppercased())")
                 .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Color.primary.opacity(0.2), lineWidth: 0.5))
                 .accessibilityHidden(true)
         }
@@ -557,7 +558,7 @@ private struct PreviewTab: View {
                 .menuStyle(.borderlessButton).fixedSize()
             }
             Picker("", selection: $device) {
-                ForEach(Device.allCases) { Image(systemName: $0.symbol).help($0.rawValue).tag($0) }
+                ForEach(Device.allCases) { Image(systemName: $0.symbol).help("Preview at \($0.rawValue.lowercased()) width").accessibilityLabel($0.rawValue).tag($0) }
             }.pickerStyle(.segmented).labelsHidden().frame(width: 100).help("Preview width")
             Spacer(minLength: 0)
             Toggle("Auto", isOn: $autoRefresh).toggleStyle(.switch).controlSize(.mini).help("Reload the preview whenever the session does something")
@@ -581,6 +582,7 @@ private struct PreviewTab: View {
                     Rectangle().fill(Color.white).frame(width: 2).shadow(radius: 2).offset(x: g.size.width * split - 1)
                     Circle().fill(Color.white).frame(width: 26, height: 26).shadow(radius: 3)
                         .overlay(Image(systemName: "arrow.left.and.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.black))
+                        .help("Drag left and right to compare before and now")
                         .offset(x: g.size.width * split - 13)
                     VStack { HStack {
                         label("Before"); Spacer(); label("Now")

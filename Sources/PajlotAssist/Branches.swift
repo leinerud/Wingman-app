@@ -322,6 +322,7 @@ struct BranchesWindow: View {
             }
             .buttonStyle(.plain)
             .help("What do branches, main and merged mean?")
+            .accessibilityLabel("Explain the words in this window")
             .popover(isPresented: $showGlossary, arrowEdge: .bottom) { BranchGlossary().padding(16).frame(width: 340) }
             IconButton(symbol: "arrow.clockwise", help: "Reload", shortcut: "r") { model.refresh() }
         }
@@ -570,6 +571,8 @@ private struct BranchLine: View {
                 IconButton(symbol: "doc.on.doc", help: "Copy the name of this branch") { copy(row.name, label: "name") }
                 Menu { actions } label: {
                     Image(systemName: "ellipsis").font(.system(size: 11.5, weight: .semibold))
+                        .help("More actions for this branch. Right-click the row for the same menu.")
+                        .accessibilityLabel("More actions for \(row.name)")
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 26, height: 26)
                 .help("More actions: review requests, compare with main, open in GitHub Copilot, VS Code or Terminal, copy commands. Right-click the row for the same menu.")

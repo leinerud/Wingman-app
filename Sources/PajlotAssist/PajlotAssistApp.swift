@@ -108,6 +108,7 @@ struct MenuBarLabel: View {
             Image(nsImage: animator.image)
             if store.activeCount > 0 { Text("\(store.activeCount)") }
         }
+        .help(store.activeCount == 0 ? "Pajlot Assist: nothing running" : "Pajlot Assist: \(store.activeCount) \(store.activeCount == 1 ? "session" : "sessions") active")
         .onAppear { animator.set(mode) }
         .registersWindowOpener()
         .onChange(of: mode) { _, new in animator.set(new) }
