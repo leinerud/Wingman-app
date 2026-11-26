@@ -76,6 +76,8 @@ private struct SizingModifier: ViewModifier {
 struct PopoverView: View {
     @EnvironmentObject var store: SessionStore
     @State private var filter: Filter = .active
+    /// Menu bar panel only: Sessions or Branches (the main window switches in its toolbar instead).
+    @AppStorage("popover.tab") private var tab: MainWindowView.Tab = .sessions
     @State private var listHeight: CGFloat = 0
     @State private var spin = 0.0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -121,7 +123,9 @@ struct PopoverView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if store.needsAccess { accessNeeded } else if shown.isEmpty { emptyState } else { list }
+            if !resizable && tab == .branches {
+                CompactBranchesView()
+            } else if store.needsAccess { accessNeeded } else if shown.isEmpty { emptyState } else { list }
             footer
         }
         .modifier(SizingModifier(resizable: resizable))
@@ -151,24 +155,40 @@ struct PopoverView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, gutter).padding(.top, 6).padding(.bottom, 16)
         } else {
-            HStack(spacing: 11) {
+            HStack(alignment: .top, spacing: 11) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Sessions")
-                        .font(.system(size: 14, weight: .semibold))
-                        .help("Each item is one chat you've started (a “session”).")
-                    Text(summaryLine)
+                    tabSwitch
+                    Text(tab == .sessions ? summaryLine : "Separate versions of the work, per project")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .contentTransition(.opacity)
                 }
                 Spacer(minLength: 8)
-                FilterControl(selection: $filter, counts: [.active: nowSessions.count, .recent: store.sessions.count])
-                    .help("Now: work in progress or waiting for you. All: everything, including finished work.")
+                if tab == .sessions {
+                    FilterControl(selection: $filter, counts: [.active: nowSessions.count, .recent: store.sessions.count])
+                        .help("Now: work in progress or waiting for you. All: everything, including finished work.")
+                }
             }
             .padding(.horizontal, Metrics.gutter)
             .padding(.top, 14)
             .padding(.bottom, 12)
+        }
+    }
+
+    /// "Sessions  Branches" as two title-sized tabs; the chosen one is dark, the other grey.
+    private var tabSwitch: some View {
+        HStack(spacing: 12) {
+            ForEach(MainWindowView.Tab.allCases) { t in
+                Button { withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) { tab = t } } label: {
+                    Text(t.rawValue).font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(tab == t ? .primary : .tertiary)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(t == .sessions ? "Each chat you've started (a “session”)" : "Every branch your Copilot sessions have used")
+                .accessibilityAddTraits(tab == t ? .isSelected : [])
+            }
         }
     }
 
@@ -292,12 +312,7 @@ struct PopoverView: View {
             }
             if showBranches == nil {   // the main window has the Sessions / Branches switch instead
                 IconButton(symbol: "arrow.triangle.branch", help: "Branches in all your Copilot repositories", shortcut: "b") {
-                    if let showBranches { showBranches() } else {
-                        // From the menu bar: open the main window on its Branches tab.
-                        UserDefaults.standard.set(MainWindowView.Tab.branches.rawValue, forKey: MainWindow.tabKey)
-                        openWindow(id: MainWindow.id)
-                        NSApp.activate()
-                    }
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) { tab = tab == .branches ? .sessions : .branches }
                 }
             }
             IconButton(symbol: "gearshape", help: "Settings: Dock, menu bar and desktop widget", shortcut: ",") {
