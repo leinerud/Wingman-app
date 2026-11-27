@@ -127,9 +127,11 @@ private struct CompactBranchRow: View {
     private var advice: Advice? { row.advice(repoNeedsAccess: needsAccess) }
     private var repoName: String { row.repo.split(separator: "/").last.map(String.init) ?? row.repo }
     private var folderURL: URL? { row.folder.flatMap { FileManager.default.fileExists(atPath: $0) ? URL(fileURLWithPath: $0) : nil } }
+    /// This branch's pull requests on GitHub (the recorded numbers can belong to another branch).
     private var prURL: URL? {
-        guard let n = row.prs.max(), row.repo.contains("/") else { return nil }
-        return URL(string: "https://github.com/\(row.repo)/pull/\(n)")
+        guard !row.prs.isEmpty, row.repo.contains("/") else { return nil }
+        let q = row.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? row.name
+        return URL(string: "https://github.com/\(row.repo)/pulls?q=is%3Apr+head%3A\(q)")
     }
 
     /// What the line under the name says: the next step if there is one, otherwise what is going on.
@@ -198,8 +200,9 @@ private struct CompactBranchRow: View {
         }
         .disabled(NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.github.githubapp") == nil)
         .help(row.copilot == .closed ? "Opens the closed workspace in the GitHub Copilot app. Use Restore there to work on it again." : "Opens this branch's session in the GitHub Copilot app")
-        if let u = prURL, let n = row.prs.max() {
-            Button { Links.open(u) } label: { Label("Open pull request #\(n)", systemImage: "arrow.triangle.pull") }
+        if let u = prURL {
+            Button { Links.open(u) } label: { Label("Open its pull request", systemImage: "arrow.triangle.pull") }
+                .help(BranchRow.signInHint)
         }
         Button { if let d = folderURL { NSWorkspace.shared.activateFileViewerSelecting([d]) } } label: { Label("Show in Finder", systemImage: "folder") }
             .disabled(folderURL == nil)

@@ -29,6 +29,16 @@ enum Demo {
     static var reviewSession: String? { isOn ? UserDefaults.standard.string(forKey: "WingmanDemoReview") : nil }
     /// -WingmanDemoReviewTab Tokens (or Timeline) opens Review on that tab.
     static var reviewTab: String? { isOn ? UserDefaults.standard.string(forKey: "WingmanDemoReviewTab") : nil }
+    /// -WingmanDemoAppearance dark (or light) shows the whole app in that appearance, whatever the Mac is set to.
+    @MainActor static func applyAppearance() {
+        guard isOn, let a = UserDefaults.standard.string(forKey: "WingmanDemoAppearance") else { return }
+        NSApp.appearance = NSAppearance(named: a.lowercased() == "dark" ? .darkAqua : .aqua)
+    }
+    /// -WingmanDemoOpen settings,welcome opens those windows too (by window id), e.g. to check them in dark mode.
+    static var windowsToOpen: [String] {
+        guard isOn, let s = UserDefaults.standard.string(forKey: "WingmanDemoOpen") else { return [] }
+        return s.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+    }
 
     /// -WingmanDemoPanel YES shows the menu bar panel with its icon above it, in a transparent window titled
     /// "Demo panel" to capture. The real status item can't be relied on: macOS may hide it behind the notch.

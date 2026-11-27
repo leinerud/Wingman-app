@@ -427,8 +427,8 @@
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				OTHER_LDFLAGS = "-lsqlite3";
-				MARKETING_VERSION = 0.2.1;
-				CURRENT_PROJECT_VERSION = 5;
+				MARKETING_VERSION = 0.2.2;
+				CURRENT_PROJECT_VERSION = 6;
 				PRODUCT_BUNDLE_IDENTIFIER = se.leinerud.Wingman;
 				PRODUCT_NAME = Wingman;
 				REGISTER_APP_GROUPS = YES;
@@ -450,8 +450,8 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.2.1;
-				CURRENT_PROJECT_VERSION = 5;
+				MARKETING_VERSION = 0.2.2;
+				CURRENT_PROJECT_VERSION = 6;
 				PRODUCT_BUNDLE_IDENTIFIER = se.leinerud.Wingman.Widget;
 				PRODUCT_NAME = WingmanWidget;
 				REGISTER_APP_GROUPS = YES;
@@ -516,8 +516,8 @@
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				OTHER_LDFLAGS = "-lsqlite3";
-				MARKETING_VERSION = 0.2.1;
-				CURRENT_PROJECT_VERSION = 5;
+				MARKETING_VERSION = 0.2.2;
+				CURRENT_PROJECT_VERSION = 6;
 				PRODUCT_BUNDLE_IDENTIFIER = se.leinerud.Wingman;
 				PRODUCT_NAME = Wingman;
 				REGISTER_APP_GROUPS = YES;
@@ -537,8 +537,8 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.2.1;
-				CURRENT_PROJECT_VERSION = 5;
+				MARKETING_VERSION = 0.2.2;
+				CURRENT_PROJECT_VERSION = 6;
 				PRODUCT_BUNDLE_IDENTIFIER = se.leinerud.Wingman.Widget;
 				PRODUCT_NAME = WingmanWidget;
 				REGISTER_APP_GROUPS = YES;
