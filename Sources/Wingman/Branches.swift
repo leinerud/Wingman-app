@@ -60,6 +60,7 @@ extension BranchRow {
     /// GitHub answers “Page not found” for a private repo when the browser is signed in with an account that can't see it
     /// (common with work accounts such as name_company next to a personal one).
     static let signInHint = "If GitHub says “Page not found”, your browser is signed in with a GitHub account that can't see this project. Sign in with your work account and try again."
+    static let alreadyGone = "You don't need to delete anything in Finder or ask Copilot to clean up: nothing is left on your Mac. It only shows here because Copilot remembers the session."
     /// What to do about this branch. Nil for branches you are actively working on.
     func advice(repoNeedsAccess: Bool) -> Advice? {
         if working { return nil }
@@ -78,8 +79,8 @@ extension BranchRow {
         }
         if existsLocally == false {
             if commits == 0 {
-                return Advice(tone: .nothing, headline: "Nothing to do",
-                              detail: "Copilot never saved any changes here, and its temporary workspace is gone. There is nothing left to keep.",
+                return Advice(tone: .nothing, headline: "Nothing to do. Already cleaned up.",
+                              detail: "Copilot never saved any changes here, and its temporary workspace is already gone. \(Self.alreadyGone)",
                               action: nil, actionLabel: nil)
             }
             if onGitHub == true {
@@ -87,8 +88,8 @@ extension BranchRow {
                               detail: "The work is on GitHub but nobody has been asked to review it. If it should become part of the product, open a pull request.",
                               action: .compare, actionLabel: "Ask for a review")
             }
-            return Advice(tone: .nothing, headline: "Probably nothing to keep",
-                          detail: "Copilot saved changes here, but the workspace is gone and, as far as this Mac can tell, they never reached GitHub. If you still want this work, start a new Copilot session and ask for it again.",
+            return Advice(tone: .nothing, headline: "Nothing to do. Already cleaned up.",
+                          detail: "Copilot saved changes here, but its temporary workspace is already gone and, as far as this Mac can tell, the changes never reached GitHub. \(Self.alreadyGone) If you still want this work, start a new Copilot session and ask for it again.",
                           action: nil, actionLabel: nil)
         }
         if existsLocally == true {
