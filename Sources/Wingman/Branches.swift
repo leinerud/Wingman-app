@@ -48,7 +48,7 @@ enum CopilotWorkspace { case active, closed }
 /// A suggested next step for a branch, in plain language, for people who don't use git.
 struct Advice {
     enum Tone { case done, check, decide, nothing, needsInfo }
-    enum Action { case openPR(Int), compare, openCopilot, remove, allowFolder }
+    enum Action { case openPR, compare, openCopilot, remove, allowFolder }
     let tone: Tone
     let headline: String
     let detail: String
@@ -57,6 +57,9 @@ struct Advice {
 }
 
 extension BranchRow {
+    /// GitHub answers “Page not found” for a private repo when the browser is signed in with an account that can't see it
+    /// (common with work accounts such as name_company next to a personal one).
+    static let signInHint = "If GitHub says “Page not found”, your browser is signed in with a GitHub account that can't see this project. Sign in with your work account and try again."
     /// What to do about this branch. Nil for branches you are actively working on.
     func advice(repoNeedsAccess: Bool) -> Advice? {
         if working { return nil }
@@ -68,10 +71,10 @@ extension BranchRow {
                             : "This work is already part of the main version, so the separate copy isn't needed any more.",
                           action: removable ? .remove : nil, actionLabel: removable ? "Remove from this Mac…" : nil)
         }
-        if let n = prs.max() {
-            return Advice(tone: .check, headline: "Check pull request #\(n)",
-                          detail: "A pull request is how work gets reviewed and added to main. Open it: if it says “Merged”, this branch can be closed. If it is still open, it is waiting for someone to review it.",
-                          action: .openPR(n), actionLabel: "Open pull request #\(n)")
+        if !prs.isEmpty {
+            return Advice(tone: .check, headline: "Check its pull request",
+                          detail: "A pull request is how work gets reviewed and added to main. Open it: if it says “Merged”, this branch can be closed. If it is still open, it is waiting for someone to review it. \(Self.signInHint)",
+                          action: .openPR, actionLabel: "Open its pull request")
         }
         if existsLocally == false {
             if commits == 0 {
@@ -727,11 +730,13 @@ private struct BranchLine: View {
     private var encodedName: String { row.name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? row.name }
     private var encodedQuery: String { row.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? row.name }
     private var branchURL: URL? { github("/tree/\(encodedName)") }
+    /// Pull requests made from this branch. Copilot only records PR numbers a session mentioned, which can belong
+    /// to another branch, so we let GitHub find the ones whose source really is this branch.
     private var pullsURL: URL? { github("/pulls?q=is%3Apr+head%3A\(encodedQuery)") }
+    private var prURL: URL? { row.prs.isEmpty ? nil : pullsURL }
     private var compareURL: URL? { github("/compare/\(encodedName)") }
     /// False only when we know there is no such branch on GitHub, so the link would be a 404.
     private var linkable: Bool { row.onGitHub == true }
-    private var prURL: URL? { row.prs.max().flatMap { github("/pull/\($0)") } }
     private var missingOnGitHub: String {
         row.onGitHub == false
             ? "This branch isn't on GitHub (it was never sent there, or has been removed), so there is no page to open."
@@ -757,10 +762,7 @@ private struct BranchLine: View {
     @ViewBuilder private var actions: some View {
         Button { if let u = branchURL { Links.open(u) } } label: { Label(linkable ? "View on GitHub" : (row.onGitHub == false ? "Not on GitHub" : "May not be on GitHub"), systemImage: "arrow.up.right.square") }
             .disabled(branchURL == nil || !linkable)
-        ForEach(Array(row.prs.sorted().reversed().prefix(3)), id: \.self) { n in
-            Button { if let u = github("/pull/\(n)") { Links.open(u) } } label: { Label("Open pull request #\(n)", systemImage: "arrow.triangle.merge") }
-        }
-        Button { if let u = pullsURL { Links.open(u) } } label: { Label("See review requests on GitHub", systemImage: "arrow.triangle.pull") }
+        Button { if let u = pullsURL { Links.open(u) } } label: { Label(row.prs.isEmpty ? "See review requests on GitHub" : "Open its pull request", systemImage: "arrow.triangle.pull") }
             .disabled(pullsURL == nil)
         Button { if let u = compareURL { Links.open(u) } } label: { Label("Compare with main or ask for a review", systemImage: "arrow.left.arrow.right") }
             .disabled(compareURL == nil || !linkable)
@@ -813,7 +815,7 @@ private struct BranchLine: View {
                     if row.merged == nil, !row.isDefault, row.existsLocally != false {
                         chip("Can't tell if it's done", Palette.muted, "The app can't compare this branch with the main version yet. Click “Show local details…” on the project and allow its folder.")
                     }
-                    if let n = row.prs.max() { chip("PR #\(n)", Palette.muted, "Copilot opened pull request #\(n) for this branch. Use the ⋯ menu to open it.") }
+                    if !row.prs.isEmpty { chip("Pull request", Palette.muted, "Copilot worked with a pull request in this session. Use the ⋯ menu to open this branch's pull requests on GitHub.") }
                     if row.onGitHub == false, row.existsLocally == false { chip("Not on GitHub", Palette.muted, missingOnGitHub) }
                     if row.copilot == .closed, !row.working { chip("Closed in Copilot", Palette.muted, "Its workspace in the GitHub Copilot app is archived. Restore it there if you want to keep working on it.") }
                     if row.existsLocally == false { chip("Not on this Mac", Palette.muted, "Copilot worked on this, but it is gone from your project folder. Often a temporary workspace that was cleaned up.") }
@@ -834,7 +836,7 @@ private struct BranchLine: View {
             Spacer(minLength: 6)
             HStack(spacing: 0) {
                 IconButton(symbol: "arrow.up.right.square",
-                           help: linkable ? "View this branch on GitHub" : (prURL != nil ? "Open pull request #\(row.prs.max() ?? 0) on GitHub" : missingOnGitHub)) {
+                           help: linkable ? "View this branch on GitHub" : (prURL != nil ? "Open this branch's pull request on GitHub" : missingOnGitHub)) {
                     if linkable, let u = branchURL { Links.open(u) } else if let u = prURL { Links.open(u) }
                 }
                 .disabled(!(linkable && branchURL != nil) && prURL == nil)
@@ -921,7 +923,7 @@ private struct BranchLine: View {
 
     private func perform(_ a: Advice.Action) {
         switch a {
-        case .openPR(let n): if let u = github("/pull/\(n)") { Links.open(u) }
+        case .openPR: if let u = pullsURL { Links.open(u) }
         case .compare: if let u = compareURL { Links.open(u) }
         case .openCopilot: openInCopilot()
         case .remove: remove()
@@ -964,7 +966,7 @@ private struct BranchLine: View {
     }
     private func helpText(_ a: Advice.Action) -> String {
         switch a {
-        case .openPR: "Opens the pull request on GitHub in your browser"
+        case .openPR: "Opens this branch's pull requests on GitHub in your browser"
         case .compare: "Opens GitHub where you can ask for a review"
         case .openCopilot: "Opens the project in the GitHub Copilot app"
         case .remove: gitOK ? "Shows what will be removed first. You can undo." : "Git can't run in this version of the app. Use the ⋯ menu to copy a command instead."
