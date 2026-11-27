@@ -67,8 +67,7 @@ struct WelcomeView: View {
             Text(whereToFind).font(.system(size: 11.5)).foregroundStyle(.secondary)
             Spacer()
             Button("Get started", action: finish)
-                .buttonStyle(.borderedProminent)
-                .tint(Palette.accent)
+                .buttonStyle(PillButtonStyle(tint: Palette.accent, filled: true))
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
         }

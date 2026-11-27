@@ -22,6 +22,9 @@ enum Palette {
     static let attention = adaptive(light: rgb(227, 110, 51), dark: rgb(255, 158, 102))
     static let ready     = adaptive(light: rgb(44, 150, 124), dark: rgb(88, 204, 170))
     static let muted     = adaptive(light: rgb(142, 142, 150), dark: rgb(120, 120, 128))
+    /// Text and symbols on a filled colour (a filled button, the "Needs you" badge). In dark mode the fills are
+    /// light, so white would vanish on them: it's near-black there instead.
+    static let onFill    = adaptive(light: .white, dark: rgb(24, 24, 26))
 }
 
 enum Metrics {
@@ -582,7 +585,7 @@ struct StatusPill: View {
 
     // Colour is kept for the status lines and for "needs you"; the pills stay neutral.
     private var pillText: Color {
-        switch status { case .working: Palette.canvas; case .needsInput: .white; default: Color.secondary }
+        switch status { case .working: Palette.canvas; case .needsInput: Palette.onFill; default: Color.secondary }
     }
     private var pillFill: Color {
         switch status { case .working: Palette.accent; case .needsInput: status.tint; default: Palette.well }
@@ -779,13 +782,13 @@ struct StepMarker: View {
         switch state {
         case .done:
             Circle().fill(Palette.ready)
-                .overlay(Image(systemName: "checkmark").font(.system(size: 7, weight: .heavy)).foregroundStyle(.white))
+                .overlay(Image(systemName: "checkmark").font(.system(size: 7, weight: .heavy)).foregroundStyle(Palette.onFill))
         case .in_progress:
             Circle().strokeBorder(tint, lineWidth: 1.5)
                 .overlay(Circle().fill(tint).padding(3.5))
         case .blocked:
             Circle().fill(Palette.attention)
-                .overlay(Image(systemName: "exclamationmark").font(.system(size: 7, weight: .heavy)).foregroundStyle(.white))
+                .overlay(Image(systemName: "exclamationmark").font(.system(size: 7, weight: .heavy)).foregroundStyle(Palette.onFill))
         case .pending:
             Circle().strokeBorder(Color.secondary.opacity(0.45), lineWidth: 1.2)
         }
@@ -894,13 +897,13 @@ struct PillButtonStyle: ButtonStyle {
         var body: some View {
             configuration.label
                 .font(.system(size: 11.5, weight: .semibold))
-                .foregroundStyle(filled ? Color.white : tint)
+                .foregroundStyle(filled ? Palette.onFill : tint)
                 .padding(.horizontal, 11)
                 .frame(height: 26)
                 .background {
                     if filled {
                         Capsule().fill(tint)
-                            .overlay(Capsule().strokeBorder(.white.opacity(0.2), lineWidth: 1))
+                            .overlay(Capsule().strokeBorder(Palette.onFill.opacity(0.2), lineWidth: 1))
                             .shadow(color: tint.opacity(0.35), radius: hover ? 6 : 3, y: 1)
                     } else {
                         Capsule().fill(tint.opacity(hover ? 0.17 : 0.1))

@@ -104,6 +104,7 @@ struct MainWindowView: View {
         .onAppear {
             Demo.fitWindows()
             if let id = Demo.reviewSession { openWindow(id: InspectorWindowID.id, value: id) }
+            for id in Demo.windowsToOpen { openWindow(id: id) }
         }
         .toolbar(removing: .title)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
@@ -152,6 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         Prefs.registerDefaults()
         Prefs.applyDockPolicy()
+        MainActor.assumeIsolated { Demo.applyAppearance() }
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated { Updates.shared.start() }
